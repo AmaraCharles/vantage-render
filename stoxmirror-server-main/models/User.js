@@ -108,6 +108,21 @@ kycRejectionReason: { type: String },
     type: Boolean,
     default: false,
   },
+
+  // Collected on the registration page (register.html) and shown in the
+  // admin "Edit User" → KYC Survey Data card.
+  currency: { type: String },
+  termsAcceptedAt: { type: Date },
+  survey_yearsOfExperience: { type: String },
+  survey_knowledgeLevel: { type: String },
+  survey_tradingFrequency: { type: String },
+  survey_preferredMarkets: { type: String },
+  survey_instrumentsTraded: { type: String },
+  survey_tradingPlatforms: { type: String },
+  survey_annualIncome: { type: String },
+  survey_primaryIncomeSource: { type: String },
+  survey_taxResidency: { type: String },
+  surveyCompleted: { type: Boolean, default: false },
 });
 
 module.exports = mongoose.model("users", UsersSchema);

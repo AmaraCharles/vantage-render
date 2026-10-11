@@ -20,6 +20,7 @@ const kycAuthRouter = require("./routes/auth/kyc");
 const transactionsRouter = require("./routes/transactions");
 const settingsRouter = require("./routes/settings");
 const wireTransferSettingsRouter = require('./routes/Wiretransfersettings')
+const demoSettingsRouter = require("./routes/demoSettings");
 // App Initialization
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -43,6 +44,7 @@ app.use("/auth/trader", traderAuthRouter);
 app.use("/transactions", transactionsRouter);
 app.use("/settings", settingsRouter);
 app.use("/wire-transfer-settings",wireTransferSettingsRouter);
+app.use("/demo-settings", demoSettingsRouter);
 
 // MongoDB Connection
 mongoose.set('strictQuery', false);

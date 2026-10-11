@@ -19,8 +19,34 @@ function generateReferralCode(length) {
 }
 
 
+// Registration questionnaire fields (currency page + trading/financial
+// profile pages in register.html). Stored as-is on the user document.
+const SURVEY_FIELDS = [
+  "survey_yearsOfExperience",
+  "survey_knowledgeLevel",
+  "survey_tradingFrequency",
+  "survey_preferredMarkets",
+  "survey_instrumentsTraded",
+  "survey_tradingPlatforms",
+  "survey_annualIncome",
+  "survey_primaryIncomeSource",
+  "survey_taxResidency",
+];
+
+function cleanString(value) {
+  return typeof value === "string" ? value.trim().slice(0, 500) : "";
+}
+
 router.post("/register", async (req, res) => {
   const { firstName, lastName, email, password, country, referralCode, phone } = req.body;
+
+  const currency = cleanString(req.body.currency);
+  const survey = {};
+  for (const field of SURVEY_FIELDS) {
+    survey[field] = cleanString(req.body[field]);
+  }
+  // Computed here rather than trusted from the client's surveyCompleted flag
+  const surveyCompleted = SURVEY_FIELDS.every((field) => survey[field]);
 
   // Generate OTP
   const otp = speakeasy.totp({
@@ -60,6 +86,10 @@ router.post("/register", async (req, res) => {
       password: hashPassword(password),
       country,
       phone,
+      currency,
+      ...survey,
+      surveyCompleted,
+      termsAcceptedAt: new Date(), // register.html blocks signup until terms are accepted
       trader: "",
       amountDeposited:
         "You are not eligible to view livestream of ongoing trade. Kindly contact your trader or support.",
