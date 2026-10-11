@@ -1,5 +1,5 @@
 var express = require("express");
-const WireTransferSettings = require("../models/WireTransferSettings");
+const WireTransferSettings = require("../models/Wiretransfersettings");
 const { requireAdmin } = require("../middleware/auth");
 var router = express.Router();
 
