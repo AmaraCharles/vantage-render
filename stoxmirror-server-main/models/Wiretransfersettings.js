@@ -20,14 +20,14 @@ const WireTransferSettingsSchema = new mongoose.Schema({
     type: Boolean,
     default: false, // off until an admin explicitly turns it on
   },
-  bankName: { type: String, default: "DEMO BANK (not a real institution)" },
+  bankName: { type: String, default: "DEMO BANK" },
   accountName: { type: String, default: "DEMO ACCOUNT — PORTFOLIO PROJECT" },
   accountNumber: { type: String, default: "0000 0000 0000 0000" },
   routingOrSortCode: { type: String, default: "000000" },
   swiftBic: { type: String, default: "DEMOXX00" },
   referenceNote: {
     type: String,
-    default: "Use your email as payment reference (demo only)",
+    default: "Use your email as payment reference",
   },
   updatedAt: { type: Date, default: Date.now },
   updatedBy: { type: String, default: null }, // admin email, for audit trail

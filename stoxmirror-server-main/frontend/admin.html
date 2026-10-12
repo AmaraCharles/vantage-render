@@ -12,6 +12,116 @@
 
 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<script>
+/* =====================================================================
+   ADMIN AUTH — loaded before every other admin script.
+   - Attaches `Authorization: Bearer <adminToken>` to every request to the
+     API (jQuery $.ajax and fetch), so routes behind requireAdmin work
+     without each script having to remember the header.
+   - If there's no token (or the API answers 401), shows an admin login
+     prompt that calls POST /auth/login and stores the returned token.
+   ===================================================================== */
+(function AdminAuth() {
+  const API_ORIGIN = "https://vantage-render.onrender.com";
+  let prompting = false;
+
+  const getToken = () => localStorage.getItem("adminToken");
+  const isApiUrl = (url) => typeof url === "string" && url.indexOf(API_ORIGIN) === 0;
+
+  // jQuery requests
+  $.ajaxPrefilter(function (options, originalOptions, jqXHR) {
+    const token = getToken();
+    if (token && isApiUrl(options.url)) jqXHR.setRequestHeader("Authorization", "Bearer " + token);
+  });
+
+  // fetch requests
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = function (input, init) {
+    const url = typeof input === "string" ? input : (input && input.url);
+    const token = getToken();
+    if (token && isApiUrl(url)) {
+      init = Object.assign({}, init);
+      const headers = new Headers(init.headers || (typeof input !== "string" && input.headers) || {});
+      if (!headers.has("Authorization")) headers.set("Authorization", "Bearer " + token);
+      init.headers = headers;
+    }
+    return nativeFetch(input, init).then(function (res) {
+      if (res.status === 401 && isApiUrl(url)) promptAdminLogin("Your admin session has expired. Please log in again.");
+      return res;
+    });
+  };
+
+  $(document).ajaxError(function (event, jqXHR, settings) {
+    if (jqXHR.status === 401 && isApiUrl(settings.url)) {
+      promptAdminLogin("Your admin session has expired. Please log in again.");
+    }
+  });
+
+  async function promptAdminLogin(reason) {
+    if (prompting) return;
+    prompting = true;
+    localStorage.removeItem("adminToken");
+
+    const result = await Swal.fire({
+      title: "Admin Login",
+      html:
+        (reason ? `<p style="margin:0 0 8px;font-size:14px;color:#888;">${reason}</p>` : "") +
+        '<input id="adminLoginEmail" type="email" class="swal2-input" placeholder="Admin email" autocomplete="username">' +
+        '<input id="adminLoginPassword" type="password" class="swal2-input" placeholder="Password" autocomplete="current-password">',
+      confirmButtonText: "Log in",
+      allowOutsideClick: false,
+      allowEscapeKey: false,
+      showLoaderOnConfirm: true,
+      didOpen: () => document.getElementById("adminLoginEmail").focus(),
+      preConfirm: async () => {
+        const email = document.getElementById("adminLoginEmail").value.trim();
+        const password = document.getElementById("adminLoginPassword").value;
+        if (!email || !password) return Swal.showValidationMessage("Enter your email and password");
+
+        let res, body = {};
+        try {
+          res = await nativeFetch(API_ORIGIN + "/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password }),
+          });
+          body = await res.json().catch(() => ({}));
+        } catch (e) {
+          return Swal.showValidationMessage("Can't reach the server. It may be waking up — try again in a minute.");
+        }
+
+        if (res.status === 404) return Swal.showValidationMessage("No account found with that email");
+        if (!res.ok) return Swal.showValidationMessage("Incorrect email or password");
+        if (!body.token) {
+          return Swal.showValidationMessage("This account isn't an admin. Set isAdmin: true on it in the database.");
+        }
+
+        const user = Object.assign({}, body.data);
+        delete user.password; delete user.otp; delete user.otpExpiration;
+        localStorage.setItem("adminToken", body.token);
+        localStorage.setItem("user", JSON.stringify(user));
+        return true;
+      },
+    });
+
+    prompting = false;
+    if (result.isConfirmed && getToken()) {
+      // reload so every section re-fetches its data with the new token
+      location.reload();
+    } else {
+      // another script's popup replaced the prompt — bring it back
+      setTimeout(() => promptAdminLogin(reason), 400);
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    if (!getToken()) promptAdminLogin();
+  });
+
+  window.promptAdminLogin = promptAdminLogin;
+})();
+</script>
   <style>
     :root{
       --bg: #f5f7fb;
@@ -504,7 +614,7 @@
           <div class="card" style="margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
             <div>
               <div style="font-weight:700;">Show "Wire Transfer" in deposit methods</div>
-              <div class="muted" style="font-size:13px;">Applied when you click Save. Use demo details only — never a real bank account.</div>
+              <div class="muted" style="font-size:13px;">Takes effect immediately. Use demo details only — never a real bank account.</div>
             </div>
             <label style="position:relative;display:inline-block;width:50px;height:28px;flex-shrink:0;">
               <input type="checkbox" id="wtEnabledToggle" style="opacity:0;width:0;height:0;" />
@@ -937,7 +1047,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // logout
     document.getElementById('logoutBtn').addEventListener('click', ()=>{
-      localStorage.removeItem('user'); localStorage.removeItem('adminToken'); window.location.href = './login.html';
+      localStorage.removeItem('user'); localStorage.removeItem('adminToken'); location.reload();
     });
 
     // expose showSection globally for scripts
@@ -1853,7 +1963,22 @@ function sendUserDetail(user) {
       }
     });
 
-    document.getElementById("wtEnabledToggle").addEventListener("change", paintToggle);
+    // Toggle saves immediately (same as the Demo switch); reverts if the request fails
+    const wtToggle = document.getElementById("wtEnabledToggle");
+    wtToggle.addEventListener("change", async function () {
+      const enabled = wtToggle.checked;
+      paintToggle();
+      try {
+        const res = await saveToggleToServer(enabled);
+        populateForm(res.data);
+        Swal.fire({ icon: "success", title: enabled ? "Wire Transfer enabled" : "Wire Transfer disabled", timer: 1200, showConfirmButton: false });
+      } catch (err) {
+        wtToggle.checked = !enabled;
+        paintToggle();
+        console.error("Error toggling wire transfer:", err);
+        Swal.fire({ icon: "error", title: "Toggle failed", text: err.responseJSON?.message || "Could not update the toggle." });
+      }
+    });
   });
 
   // expose for the nav-click hook pattern already used elsewhere in test.html
