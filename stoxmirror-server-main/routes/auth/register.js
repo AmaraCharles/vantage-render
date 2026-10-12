@@ -338,6 +338,7 @@ router.post("/register", async (req, res) => {
 
 
 
+// Used by the forgot-password flow — sends the password reset OTP email
 router.post("/register/resend", async (req, res) => {
   const { email } = req.body;
   const user = await UsersDatabase.findOne({ email });
@@ -353,22 +354,59 @@ router.post("/register/resend", async (req, res) => {
   }
 
   try {
-    
+
     res.status(200).json({
       success: true,
       status: 200,
       message: "OTP resent successfully",
     });
-    
+
  sendPasswordOtp({to:req.body.email})
-   
-    // sendUserDetails({
-    //   to:req.body.email
-    //   });
-      
 
   } catch (error) {
     console.log(error);
+  }
+});
+
+// Used by the registration page — resends the account verification OTP
+router.post("/register/resend-verification", async (req, res) => {
+  const { email } = req.body;
+  const user = await UsersDatabase.findOne({ email });
+
+  if (!user) {
+    res.status(404).json({
+      success: false,
+      status: 404,
+      message: "User not found",
+    });
+
+    return;
+  }
+
+  try {
+    // Issue a fresh OTP, same as /register
+    const otp = speakeasy.totp({
+      secret: process.env.SECRET_KEY,
+      encoding: "base32",
+    });
+    const otpExpiration = Date.now() + 5 * 60 * 1000; // 5 minutes
+
+    await user.updateOne({ otp, otpExpiration });
+    await sendWelcomeEmail({ to: email, otp });
+
+    return res.status(200).json({
+      success: true,
+      status: 200,
+      message: "OTP resent successfully",
+      otp,
+      otpExpiration,
+    });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to resend OTP",
+    });
   }
 });
 

@@ -14,70 +14,196 @@ const hashPassword = (password) => bcrypt.hashSync(password, salt);
 const compareHashedPassword = (hashedPassword, password) =>
   bcrypt.compareSync(password, hashedPassword);
 
+/* =====================================================================
+   Shared email layout — every email uses the welcome-email styling
+   ===================================================================== */
+const SITE_URL = process.env.SITE_URL || "https://vantagestonk.com";
+const SUPPORT_EMAIL = "support@vantagestonk.com";
+
+const EMAIL_STYLES = `
+  body {
+    background-color: #f4f6f8;
+    font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    color: #333;
+    margin: 0;
+    padding: 0;
+  }
+  .container {
+    max-width: 600px;
+    background: #ffffff;
+    margin: 40px auto;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+    overflow: hidden;
+  }
+  .header {
+    background: linear-gradient(135deg, #18e09b, #0e8e61);
+    color: #ffffff;
+    text-align: center;
+    padding: 30px 20px;
+  }
+  .header img {
+    width: 50px;
+    height: 50px;
+    margin-bottom: 10px;
+  }
+  .header h1 {
+    font-size: 22px;
+    margin: 0;
+  }
+  .content {
+    padding: 30px 25px;
+    text-align: left;
+  }
+  .content h2 {
+    color: #18e09b;
+    font-size: 18px;
+    margin-bottom: 10px;
+  }
+  .content p {
+    line-height: 1.7;
+    font-size: 15px;
+    margin: 10px 0;
+  }
+  .otp-box {
+    background: #f0f4ff;
+    color: #18e09b;
+    font-size: 28px;
+    letter-spacing: 6px;
+    font-weight: bold;
+    text-align: center;
+    padding: 18px;
+    border-radius: 8px;
+    margin: 25px 0;
+    border: 1px solid #d4e0ff;
+  }
+  .details {
+    width: 100%;
+    background: #f9fafb;
+    border: 1px solid #e6e6e6;
+    border-radius: 8px;
+    margin: 20px 0;
+    border-collapse: separate;
+    padding: 8px 12px;
+  }
+  .details td {
+    padding: 8px 4px;
+    font-size: 15px;
+    vertical-align: top;
+  }
+  .detail-label {
+    color: #18e09b;
+    font-weight: bold;
+    width: 140px;
+  }
+  .detail-value {
+    color: #333;
+    word-break: break-all;
+  }
+  .highlight {
+    color: #18e09b;
+    font-weight: bold;
+  }
+  .note {
+    background: #f9fafb;
+    padding: 12px;
+    border-left: 4px solid #18e09b;
+    font-size: 14px;
+    color: #555;
+    margin-top: 10px;
+  }
+  .note-warning { border-left-color: #ff9800; background: #fff8ee; }
+  .note-danger { border-left-color: #f44336; background: #fff3f2; }
+  .button {
+    display: inline-block;
+    background: #18e09b;
+    color: #ffffff !important;
+    text-decoration: none;
+    font-weight: bold;
+    padding: 12px 28px;
+    border-radius: 8px;
+    margin: 15px 0;
+  }
+  .footer {
+    background-color: #f8f9fa;
+    text-align: center;
+    padding: 20px;
+    font-size: 13px;
+    color: #888;
+    border-top: 1px solid #e6e6e6;
+  }
+  .footer a {
+    color: #18e09b;
+    text-decoration: none;
+  }
+`;
+
+const emailLayout = ({ title, body }) => `
+  <!DOCTYPE html>
+  <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${title}</title>
+    <style>${EMAIL_STYLES}</style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <img src="https://vantagestonk.com/logo.png" alt="vantagestonk Logo" />
+        <h1>${title}</h1>
+      </div>
+      <div class="content">
+        ${body}
+      </div>
+      <div class="footer">
+        <p>Need help? Contact our <a href="mailto:${SUPPORT_EMAIL}">support team</a>.</p>
+        <p>&copy; ${new Date().getFullYear()} vantagestonk. All rights reserved.</p>
+      </div>
+    </div>
+  </body>
+  </html>
+`;
+
+const detailsTable = (rows) => `
+  <table class="details" cellpadding="0" cellspacing="0">
+    ${rows
+      .map(([label, value]) => `<tr><td class="detail-label">${label}</td><td class="detail-value">${value}</td></tr>`)
+      .join("")}
+  </table>
+`;
+
+const otpBox = (otp) => `<div class="otp-box">${otp}</div>`;
+
+const note = (text, variant) => `<div class="note${variant ? ` note-${variant}` : ""}">${text}</div>`;
+
+const button = (href, label) => `<p style="text-align:center;"><a href="${href}" class="button">${label}</a></p>`;
+
+/* =====================================================================
+   Emails
+   ===================================================================== */
+
 // Send withdrawal notification email
 const sendWithdrawalRequestEmail = async ({ from, amount, method, address }) => {
   try {
     await resend.emails.send({
       from: process.env.EMAIL_USER || "no-reply@vantagestonk.com",
-      to: "support@vantagestonk.com",
+      to: SUPPORT_EMAIL,
       subject: "Transaction Notification",
-      html: `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <style>
-            body { font-family: 'Segoe UI', Roboto, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f4f6f8; }
-            .container { background: #ffffff; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.06); overflow: hidden; }
-            .header { background: linear-gradient(135deg, #18e09b, #0e8e61); color: white; padding: 30px 20px; text-align: center; }
-            .content { background-color: #ffffff; padding: 30px 25px; }
-            .withdrawal-details { background-color: #f8f9fa; padding: 20px; margin: 20px 0; border-radius: 8px; border: 1px solid #e0e0e0; }
-            .detail-item { margin: 12px 0; display: flex; align-items: center; }
-            .detail-label { font-weight: bold; color: #18e09b; width: 140px; }
-            .detail-value { flex: 1; }
-            .amount { color: #18e09b; font-size: 24px; font-weight: bold; }
-            .user-name { color: #18e09b; font-weight: bold; }
-            .action-needed { background-color: #fff4e5; border-left: 4px solid #ff9800; padding: 15px; margin: 20px 0; }
-            .footer { margin-top: 30px; text-align: center; color: #666; font-size: 14px; padding: 20px; border-top: 1px solid #e6e6e6; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <h2 style="margin: 0; font-size: 24px;">Withdrawal Request</h2>
-            </div>
-            <div class="content">
-              <p>Hello Chief,</p>
-              <p>A new withdrawal request has been submitted by <span class="user-name">${from}</span>:</p>
-              
-              <div class="withdrawal-details">
-                <div class="detail-item">
-                  <span class="detail-label">Amount:</span>
-                  <span class="detail-value amount">$${amount}</span>
-                </div>
-                <div class="detail-item">
-                  <span class="detail-label">Payment Method:</span>
-                  <span class="detail-value">${method}</span>
-                </div>
-                <div class="detail-item">
-                  <span class="detail-label">Wallet Address:</span>
-                  <span class="detail-value" style="word-break: break-all;">${address}</span>
-                </div>
-              </div>
-              
-              <div class="action-needed">
-                <p style="margin: 0;"><strong>Action Required:</strong> Please review and process this withdrawal request at your earliest convenience.</p>
-              </div>
-            </div>
-            <div class="footer">
-              <p>Best regards,<br>vantagestonk Team</p>
-              <p style="font-size: 12px; color: #888;">© ${new Date().getFullYear()} vantagestonk. All rights reserved.</p>
-            </div>
-          </div>
-        </body>
-        </html>
-      `
+      html: emailLayout({
+        title: "Withdrawal Request",
+        body: `
+          <h2>New Withdrawal Request</h2>
+          <p>Hello Chief,</p>
+          <p>A new withdrawal request has been submitted by <span class="highlight">${from}</span>:</p>
+          ${detailsTable([
+            ["Amount", `<span class="highlight">$${amount}</span>`],
+            ["Payment Method", method],
+            ["Wallet Address", address],
+          ])}
+          ${note("<strong>Action Required:</strong> Please review and process this withdrawal request at your earliest convenience.", "warning")}
+        `,
+      }),
     });
 
     console.log("✅ Withdrawal request email sent successfully");
@@ -92,39 +218,21 @@ const userRegisteration = async ({ firstName, email }) => {
   try {
     await resend.emails.send({
       from: process.env.EMAIL_USER,
-      to: "support@vantagestonk.com",
+      to: SUPPORT_EMAIL,
       subject: "Transaction Notification",
-      html: `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background-color: #18e09b; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
-            .content { background-color: #ffffff; padding: 20px; border: 1px solid #e0e0e0; border-radius: 0 0 5px 5px; }
-            .footer { margin-top: 20px; text-align: center; color: #666; font-size: 14px; }
-            .highlight { color: #18e09b; font-weight: bold; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h2>New User Registration</h2>
-          </div>
-          <div class="content">
-            <p>Hello Chief,</p>
-            <p>A new user has registered on the platform:</p>
-            <ul style="list-style: none; padding: 0;">
-              <li>Name: <span class="highlight">${firstName}</span></li>
-              <li>Email: <span class="highlight">${email}</span></li>
-            </ul>
-            <p>Please visit your dashboard to review and confirm this registration.</p>
-          </div>
-          <div class="footer">
-            <p>Best regards,<br>vantagestonk Team</p>
-          </div>
-        </body>
-        </html>
-      `
+      html: emailLayout({
+        title: "New User Registration",
+        body: `
+          <h2>A New User Has Joined</h2>
+          <p>Hello Chief,</p>
+          <p>A new user has registered on the platform:</p>
+          ${detailsTable([
+            ["Name", firstName],
+            ["Email", email],
+          ])}
+          <p>Please visit your dashboard to review and confirm this registration.</p>
+        `,
+      }),
     });
     console.log('Registration notification email sent successfully');
   } catch (error) {
@@ -139,38 +247,21 @@ const sendWithdrawalEmail = async ({ to, address, amount, method, timestamp, fro
       from: process.env.EMAIL_USER,
       to: to,
       subject: "Transaction Notification",
-      html: `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background-color: #18e09b; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
-            .content { background-color: #ffffff; padding: 20px; border: 1px solid #e0e0e0; border-radius: 0 0 5px 5px; }
-            .details { background-color: #f8f9fa; padding: 15px; margin: 15px 0; border-radius: 5px; }
-            .footer { margin-top: 20px; text-align: center; color: #666; font-size: 14px; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h2>Withdrawal Request Confirmation</h2>
-          </div>
-          <div class="content">
-            <p>Hello ${from},</p>
-            <p>We have received your withdrawal request. Here are the details for your reference:</p>
-            <div class="details">
-              <p><strong>Amount:</strong> $${amount}</p>
-              <p><strong>Wallet Address:</strong> ${address}</p>
-              <p><strong>Payment Method:</strong> ${method}</p>
-            </div>
-            <p>Our team will process your request as soon as possible. You will receive another email once the withdrawal has been processed.</p>
-          </div>
-          <div class="footer">
-            <p>Best regards,<br>vantagestonk Team</p>
-          </div>
-        </body>
-        </html>
-      `
+      html: emailLayout({
+        title: "Withdrawal Request Received",
+        body: `
+          <h2>We've Received Your Request</h2>
+          <p>Hello ${from},</p>
+          <p>We have received your withdrawal request. Here are the details for your reference:</p>
+          ${detailsTable([
+            ["Amount", `<span class="highlight">$${amount}</span>`],
+            ["Wallet Address", address],
+            ["Payment Method", method],
+          ])}
+          <p>Our team will process your request as soon as possible. You will receive another email once the withdrawal has been processed.</p>
+          ${note("If you didn't make this request, please contact our support team immediately.")}
+        `,
+      }),
     });
     console.log('Withdrawal notification email sent successfully');
   } catch (error) {
@@ -183,41 +274,23 @@ const sendDepositEmail = async ({ from, amount, method, timestamp }) => {
   try {
     await resend.emails.send({
       from: process.env.EMAIL_USER,
-      to: "support@vantagestonk.com",
+      to: SUPPORT_EMAIL,
       subject: "Transaction Notification",
-      html: `
-        <html>
-        <head>
-          <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background-color: #18e09b; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
-            .content { background-color: #ffffff; padding: 20px; border: 1px solid #e0e0e0; border-radius: 0 0 5px 5px; }
-            .transaction-details { background-color: #f8f9fa; padding: 15px; margin: 15px 0; border-radius: 5px; }
-            .footer { margin-top: 20px; text-align: center; color: #666; font-size: 14px; }
-            .highlight { color: #18e09b; font-weight: bold; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h2>New Deposit Notification</h2>
-          </div>
-          <div class="content">
-            <p>Hello Chief,</p>
-            <p>A new deposit has been initiated:</p>
-            <div class="transaction-details">
-              <p><strong>User:</strong> <span class="highlight">${from}</span></p>
-              <p><strong>Amount:</strong> <span class="highlight">$${amount}</span></p>
-              <p><strong>Payment Method:</strong> ${method}</p>
-              <p><strong>Time:</strong> ${timestamp}</p>
-            </div>
-            <p>Please verify this transaction and update the user's balance from your admin dashboard.</p>
-          </div>
-          <div class="footer">
-            <p>Best regards,<br>vantagestonk Team</p>
-          </div>
-        </body>
-        </html>
-      `
+      html: emailLayout({
+        title: "New Deposit",
+        body: `
+          <h2>Deposit Initiated</h2>
+          <p>Hello Chief,</p>
+          <p>A new deposit has been initiated:</p>
+          ${detailsTable([
+            ["User", `<span class="highlight">${from}</span>`],
+            ["Amount", `<span class="highlight">$${amount}</span>`],
+            ["Payment Method", method],
+            ["Time", timestamp],
+          ])}
+          ${note("<strong>Action Required:</strong> Please verify this transaction and update the user's balance from your admin dashboard.", "warning")}
+        `,
+      }),
     });
     console.log('Deposit notification email sent successfully');
   } catch (error) {
@@ -230,61 +303,21 @@ const sendBankDepositRequestEmail = async ({ from, amount, method, timestamp }) 
   try {
     await resend.emails.send({
       from: process.env.EMAIL_USER,
-      to: "support@vantagestonk.com",
+      to: SUPPORT_EMAIL,
       subject: "Transaction Notification",
-      html: `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <style>
-            body { font-family: 'Segoe UI', Roboto, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f4f6f8; }
-            .container { background: #ffffff; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.06); overflow: hidden; }
-            .header { background: linear-gradient(135deg, #18e09b, #0e8e61); color: white; padding: 30px 20px; text-align: center; }
-            .content { background-color: #ffffff; padding: 30px 25px; }
-            .transaction-details { background-color: #f8f9fa; padding: 20px; margin: 20px 0; border-radius: 8px; border: 1px solid #e0e0e0; }
-            .detail-item { margin: 12px 0; display: flex; align-items: center; }
-            .detail-label { font-weight: bold; color: #18e09b; width: 140px; }
-            .detail-value { flex: 1; }
-            .amount { color: #18e09b; font-size: 24px; font-weight: bold; }
-            .user-name { color: #18e09b; font-weight: bold; }
-            .action-needed { background-color: #fff4e5; border-left: 4px solid #ff9800; padding: 15px; margin: 20px 0; }
-            .footer { margin-top: 30px; text-align: center; color: #666; font-size: 14px; padding: 20px; border-top: 1px solid #e6e6e6; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <h2 style="margin: 0; font-size: 24px;">Bank Transfer Request</h2>
-            </div>
-            <div class="content">
-              <p>Hello Chief,</p>
-              <p>A new bank transfer request has been received from <span class="user-name">${from}</span>:</p>
-              
-              <div class="transaction-details">
-                <div class="detail-item">
-                  <span class="detail-label">Amount:</span>
-                  <span class="detail-value amount">$${amount}</span>
-                </div>
-                <div class="detail-item">
-                  <span class="detail-label">Time:</span>
-                  <span class="detail-value">${timestamp}</span>
-                </div>
-              </div>
-              
-              <div class="action-needed">
-                <p style="margin: 0;"><strong>Action Required:</strong> Please provide the necessary account details to process this request.</p>
-              </div>
-            </div>
-            <div class="footer">
-              <p>Best regards,<br>vantagestonk Team</p>
-              <p style="font-size: 12px; color: #888;">© ${new Date().getFullYear()} vantagestonk. All rights reserved.</p>
-            </div>
-          </div>
-        </body>
-        </html>
-      `
+      html: emailLayout({
+        title: "Bank Transfer Request",
+        body: `
+          <h2>New Bank Transfer Request</h2>
+          <p>Hello Chief,</p>
+          <p>A new bank transfer request has been received from <span class="highlight">${from}</span>:</p>
+          ${detailsTable([
+            ["Amount", `<span class="highlight">$${amount}</span>`],
+            ["Time", timestamp],
+          ])}
+          ${note("<strong>Action Required:</strong> Please provide the necessary account details to process this request.", "warning")}
+        `,
+      }),
     });
     console.log('Bank deposit request email sent successfully');
   } catch (error) {
@@ -299,16 +332,21 @@ const sendDepositApproval = async ({ from, amount, method, timestamp, to }) => {
       from: process.env.EMAIL_USER,
       to: to,
       subject: "Transaction Notification",
-      html: `
-        <html>
-        <p>Hello ${from}</p>
-        <p>Your deposit of $${amount} of ${method} has been approved.</p>
-        <p>Kindly visit your dashboard for more information</p>
-        <p>${timestamp}</p>
-        <p>Best wishes,</p>
-        <p>vantagestonk Team</p>
-        </html>
-      `
+      html: emailLayout({
+        title: "Deposit Approved",
+        body: `
+          <h2>Your Deposit Has Been Approved</h2>
+          <p>Hello ${from},</p>
+          <p>Good news! Your deposit has been <strong>approved</strong> and credited to your account.</p>
+          ${detailsTable([
+            ["Amount", `<span class="highlight">$${amount}</span>`],
+            ["Payment Method", method],
+            ["Date", timestamp],
+          ])}
+          <p>Kindly visit your dashboard for more information.</p>
+          ${button(`${SITE_URL}/login.html`, "Go to Dashboard")}
+        `,
+      }),
     });
     console.log('Deposit approval email sent successfully');
   } catch (error) {
@@ -323,67 +361,20 @@ const sendWithdrawalApproval = async ({ from, amount, method, timestamp, to }) =
       from: process.env.EMAIL_USER,
       to: to,
       subject: "Withdrawal Approved",
-      html: `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <style>
-            body { 
-              font-family: Arial, sans-serif; 
-              line-height: 1.6; 
-              color: #333; 
-              max-width: 600px; 
-              margin: 0 auto; 
-              padding: 20px; 
-              background-color: #f5f7fa;
-            }
-            .header { 
-              background-color: #18e09b; 
-              color: white; 
-              padding: 20px; 
-              text-align: center; 
-              border-radius: 5px 5px 0 0; 
-            }
-            .content { 
-              background-color: #ffffff; 
-              padding: 20px; 
-              border: 1px solid #e0e0e0; 
-              border-radius: 0 0 5px 5px; 
-            }
-            .details { 
-              background-color: #f8f9fa; 
-              padding: 15px; 
-              margin: 15px 0; 
-              border-radius: 5px; 
-            }
-            .footer { 
-              margin-top: 20px; 
-              text-align: center; 
-              color: #666; 
-              font-size: 14px; 
-            }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h2>Withdrawal Approved</h2>
-          </div>
-          <div class="content">
-            <p>Hello ${from},</p>
-            <p>We are pleased to inform you that your withdrawal request has been <strong>approved</strong>. Please find the details below:</p>
-            <div class="details">
-              <p><strong>Amount:</strong> $${amount}</p>
-              <p><strong>Payment Method:</strong> ${method}</p>
-              <p><strong>Date:</strong> ${timestamp}</p>
-            </div>
-            <p>The funds should now reflect in your account. Kindly verify your updated balance.</p>
-          </div>
-          <div class="footer">
-            <p>Best regards,<br>vantagestonk Team</p>
-          </div>
-        </body>
-        </html>
-      `
+      html: emailLayout({
+        title: "Withdrawal Approved",
+        body: `
+          <h2>Your Withdrawal Has Been Approved</h2>
+          <p>Hello ${from},</p>
+          <p>We are pleased to inform you that your withdrawal request has been <strong>approved</strong>. Please find the details below:</p>
+          ${detailsTable([
+            ["Amount", `<span class="highlight">$${amount}</span>`],
+            ["Payment Method", method],
+            ["Date", timestamp],
+          ])}
+          <p>The funds should now reflect in your account. Kindly verify your updated balance.</p>
+        `,
+      }),
     });
     console.log('Withdrawal approval email sent successfully');
   } catch (error) {
@@ -397,66 +388,22 @@ const sendPlanEmail = async ({ from, subamount, subname, timestamp }) => {
   try {
     await resend.emails.send({
       from: process.env.EMAIL_USER,
-      to: "support@vantagestonk.com",
+      to: SUPPORT_EMAIL,
       subject: "Transaction Notification",
-      html: `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <style>
-            body { font-family: 'Segoe UI', Roboto, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f4f6f8; }
-            .container { background: #ffffff; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.06); overflow: hidden; }
-            .header { background: linear-gradient(135deg, #18e09b, #0e8e61); color: white; padding: 30px 20px; text-align: center; }
-            .content { background-color: #ffffff; padding: 30px 25px; }
-            .plan-details { background-color: #f8f9fa; padding: 20px; margin: 20px 0; border-radius: 8px; border: 1px solid #e0e0e0; }
-            .detail-item { margin: 12px 0; display: flex; align-items: center; }
-            .detail-label { font-weight: bold; color: #18e09b; width: 140px; }
-            .detail-value { flex: 1; }
-            .amount { color: #18e09b; font-size: 24px; font-weight: bold; }
-            .plan-name { color: #18e09b; font-weight: bold; font-size: 20px; }
-            .user-name { color: #18e09b; font-weight: bold; }
-            .action-needed { background-color: #fff4e5; border-left: 4px solid #ff9800; padding: 15px; margin: 20px 0; }
-            .footer { margin-top: 30px; text-align: center; color: #666; font-size: 14px; padding: 20px; border-top: 1px solid #e6e6e6; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <h2 style="margin: 0; font-size: 24px;">New Plan Subscription</h2>
-            </div>
-            <div class="content">
-              <p>Hello Chief,</p>
-              <p>A new plan subscription has been initiated by <span class="user-name">${from}</span>:</p>
-              
-              <div class="plan-details">
-                <div class="detail-item">
-                  <span class="detail-label">Plan:</span>
-                  <span class="detail-value plan-name">${subname}</span>
-                </div>
-                <div class="detail-item">
-                  <span class="detail-label">Amount:</span>
-                  <span class="detail-value amount">$${subamount}</span>
-                </div>
-                <div class="detail-item">
-                  <span class="detail-label">Time:</span>
-                  <span class="detail-value">${timestamp}</span>
-                </div>
-              </div>
-              
-              <div class="action-needed">
-                <p style="margin: 0;"><strong>Action Required:</strong> Please verify this subscription and update the user's account accordingly.</p>
-              </div>
-            </div>
-            <div class="footer">
-              <p>Best regards,<br>vantagestonk Team</p>
-              <p style="font-size: 12px; color: #888;">© ${new Date().getFullYear()} vantagestonk. All rights reserved.</p>
-            </div>
-          </div>
-        </body>
-        </html>
-      `
+      html: emailLayout({
+        title: "New Plan Subscription",
+        body: `
+          <h2>Plan Subscription Initiated</h2>
+          <p>Hello Chief,</p>
+          <p>A new plan subscription has been initiated by <span class="highlight">${from}</span>:</p>
+          ${detailsTable([
+            ["Plan", `<span class="highlight">${subname}</span>`],
+            ["Amount", `<span class="highlight">$${subamount}</span>`],
+            ["Time", timestamp],
+          ])}
+          ${note("<strong>Action Required:</strong> Please verify this subscription and update the user's account accordingly.", "warning")}
+        `,
+      }),
     });
     console.log('Plan subscription notification email sent successfully');
   } catch (error) {
@@ -469,50 +416,19 @@ const sendVerificationEmail = async ({ from, url }) => {
   try {
     await resend.emails.send({
       from: process.env.EMAIL_USER,
-      to: "support@vantagestonk.com",
+      to: SUPPORT_EMAIL,
       subject: "Account Verification Notification",
-      html: `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <style>
-            body { font-family: 'Segoe UI', Roboto, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f4f6f8; }
-            .container { background: #ffffff; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.06); overflow: hidden; }
-            .header { background: linear-gradient(135deg, #18e09b, #0e8e61); color: white; padding: 30px 20px; text-align: center; }
-            .content { background-color: #ffffff; padding: 30px 25px; }
-            .verification-details { background-color: #f8f9fa; padding: 20px; margin: 20px 0; border-radius: 8px; border: 1px solid #e0e0e0; }
-            .user-name { color: #18e09b; font-weight: bold; }
-            .action-button { display: inline-block; background: #18e09b; color: white; text-decoration: none; padding: 12px 24px; border-radius: 6px; margin: 15px 0; }
-            .action-button:hover { background: #0e8e61; }
-            .footer { margin-top: 30px; text-align: center; color: #666; font-size: 14px; padding: 20px; border-top: 1px solid #e6e6e6; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <h2 style="margin: 0; font-size: 24px;">Identity Verification Update</h2>
-            </div>
-            <div class="content">
-              <p>Hello Chief,</p>
-              <p>User <span class="user-name">${from}</span> has completed their identity verification process.</p>
-              
-              <div class="verification-details">
-                <p style="margin: 0;">Please review the submitted verification documents by clicking the button below:</p>
-                <a href="${url}" class="action-button">View Documents</a>
-              </div>
-              
-              <p>Please review and verify the submitted documents at your earliest convenience.</p>
-            </div>
-            <div class="footer">
-              <p>Best regards,<br>vantagestonk Team</p>
-              <p style="font-size: 12px; color: #888;">© ${new Date().getFullYear()} vantagestonk. All rights reserved.</p>
-            </div>
-          </div>
-        </body>
-        </html>
-      `
+      html: emailLayout({
+        title: "Identity Verification Update",
+        body: `
+          <h2>Documents Submitted</h2>
+          <p>Hello Chief,</p>
+          <p>User <span class="highlight">${from}</span> has completed their identity verification process.</p>
+          <p>Please review the submitted verification documents by clicking the button below:</p>
+          ${button(url, "View Documents")}
+          <p>Please review and verify the submitted documents at your earliest convenience.</p>
+        `,
+      }),
     });
     console.log('Verification notification email sent successfully');
   } catch (error) {
@@ -527,121 +443,17 @@ const sendWelcomeEmail = async ({ to, otp }) => {
       from: process.env.EMAIL_USER,
       to: to,
       subject: "Verify Your vantagestonk Account",
-      html: `
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-          <meta charset="UTF-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-          <title>vantagestonk Verification</title>
-          <style>
-            body {
-              background-color: #f4f6f8;
-              font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-              color: #333;
-              margin: 0;
-              padding: 0;
-            }
-            .container {
-              max-width: 600px;
-              background: #ffffff;
-              margin: 40px auto;
-              border-radius: 12px;
-              box-shadow: 0 4px 20px rgba(0,0,0,0.06);
-              overflow: hidden;
-            }
-            .header {
-              background: linear-gradient(135deg, #18e09b, #0e8e61);
-              color: #ffffff;
-              text-align: center;
-              padding: 30px 20px;
-            }
-            .header img {
-              width: 50px;
-              height: 50px;
-              margin-bottom: 10px;
-            }
-            .header h1 {
-              font-size: 22px;
-              margin: 0;
-            }
-            .content {
-              padding: 30px 25px;
-              text-align: left;
-            }
-            .content h2 {
-              color: #18e09b;
-              font-size: 18px;
-              margin-bottom: 10px;
-            }
-            .content p {
-              line-height: 1.7;
-              font-size: 15px;
-              margin: 10px 0;
-            }
-            .otp-box {
-              background: #f0f4ff;
-              color: #18e09b;
-              font-size: 28px;
-              letter-spacing: 6px;
-              font-weight: bold;
-              text-align: center;
-              padding: 18px;
-              border-radius: 8px;
-              margin: 25px 0;
-              border: 1px solid #d4e0ff;
-            }
-            .note {
-              background: #f9fafb;
-              padding: 12px;
-              border-left: 4px solid #18e09b;
-              font-size: 14px;
-              color: #555;
-              margin-top: 10px;
-            }
-            .footer {
-              background-color: #f8f9fa;
-              text-align: center;
-              padding: 20px;
-              font-size: 13px;
-              color: #888;
-              border-top: 1px solid #e6e6e6;
-            }
-            .footer a {
-              color: #18e09b;
-              text-decoration: none;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <img src="https://vantagestonk.com/logo.png" alt="vantagestonk Logo" />
-              <h1>Welcome to vantagestonk</h1>
-            </div>
-            <div class="content">
-              <h2>Verify Your Email</h2>
-              <p>Hello,</p>
-              <p>Thank you for creating an account with <strong>vantagestonk</strong>. To protect your account, please use the verification code below to complete your registration:</p>
-
-              <div class="otp-box">
-                ${otp}
-              </div>
-
-              <p>This code will expire in <strong>5 minutes</strong>. For your security, never share this code with anyone—even a vantagestonk representative.</p>
-
-              <div class="note">
-                If you didn’t sign up for a vantagestonk account, please ignore this email or contact our support team immediately.
-              </div>
-            </div>
-            <div class="footer">
-              <p>Need help? Contact our <a href="mailto:support@vantagestonk.com">support team</a>.</p>
-              <p>&copy; ${new Date().getFullYear()} vantagestonk. All rights reserved.</p>
-            </div>
-          </div>
-        </body>
-        </html>
-      `
+      html: emailLayout({
+        title: "Welcome to vantagestonk",
+        body: `
+          <h2>Verify Your Email</h2>
+          <p>Hello,</p>
+          <p>Thank you for creating an account with <strong>vantagestonk</strong>. To protect your account, please use the verification code below to complete your registration:</p>
+          ${otpBox(otp)}
+          <p>This code will expire in <strong>5 minutes</strong>. For your security, never share this code with anyone—even a vantagestonk representative.</p>
+          ${note("If you didn’t sign up for a vantagestonk account, please ignore this email or contact our support team immediately.")}
+        `,
+      }),
     });
     console.log("✅ Welcome email sent successfully");
   } catch (error) {
@@ -657,18 +469,16 @@ const resendWelcomeEmail = async ({ to, token }) => {
       from: process.env.EMAIL_USER,
       to: to,
       subject: 'Account Verification',
-      html: `
-        <html>
-        <h2>Welcome to vantagestonk</h2>
-        <p>Let us know if this is really your email address, 
-        to help us keep your account secure
-        </p>
-        <p>Confirm your email and let's get started!</p>
-        <p>Your OTP is: ${speakeasy.totp({ secret: secret.base32, encoding: 'base32' })}</p>
-        <p>Best wishes,</p>
-        <p>vantagestonk Team</p>
-        </html>
-      `
+      html: emailLayout({
+        title: "Welcome to vantagestonk",
+        body: `
+          <h2>Confirm Your Email</h2>
+          <p>Hello,</p>
+          <p>Let us know if this is really your email address, to help us keep your account secure. Confirm your email and let's get started!</p>
+          ${otpBox(speakeasy.totp({ secret: secret.base32, encoding: 'base32' }))}
+          ${note("If you didn’t sign up for a vantagestonk account, please ignore this email or contact our support team immediately.")}
+        `,
+      }),
     });
     console.log('Welcome email sent successfully');
   } catch (error) {
@@ -683,16 +493,17 @@ const resetEmail = async ({ to, token }) => {
       from: process.env.EMAIL_USER,
       to: to,
       subject: 'Change Password',
-      html: `
-        <html>
-        <h2>Welcome to vantagestonk</h2>
-        <p>You have requested to change your password. Please use the following OTP to reset your password.</p>
-        <p>Your OTP is: ${speakeasy.totp({ secret: secret.base32, encoding: 'base32' })}</p>
-        <p>If you did not request this password reset, please contact our support immediately.</p>
-        <p>Best wishes,</p>
-        <p>vantagestonk Team</p>
-        </html>
-      `
+      html: emailLayout({
+        title: "Change Your Password",
+        body: `
+          <h2>Password Change Request</h2>
+          <p>Hello,</p>
+          <p>You have requested to change your password. Please use the following code to reset your password:</p>
+          ${otpBox(speakeasy.totp({ secret: secret.base32, encoding: 'base32' }))}
+          <p>For your security, never share this code with anyone—even a vantagestonk representative.</p>
+          ${note("If you did not request this password reset, please contact our support team immediately.", "warning")}
+        `,
+      }),
     });
     console.log('Password change email sent successfully');
   } catch (error) {
@@ -707,14 +518,20 @@ const sendUserPlanEmail = async ({ from, subamount, to, subname, timestamp }) =>
       from: process.env.EMAIL_USER,
       to: to,
       subject: 'Transaction Notification',
-      html: `
-        <html>
-        <p>Hello ${from},</p>
-        <p>You successfully subscribed to $${subamount} worth of ${subname} plan at ${timestamp}</p>
-        <p>Best wishes,</p>
-        <p>vantagestonk Team</p>
-        </html>
-      `
+      html: emailLayout({
+        title: "Subscription Confirmed",
+        body: `
+          <h2>You're Subscribed</h2>
+          <p>Hello ${from},</p>
+          <p>You have successfully subscribed to a new plan. Here are the details:</p>
+          ${detailsTable([
+            ["Plan", `<span class="highlight">${subname}</span>`],
+            ["Amount", `<span class="highlight">$${subamount}</span>`],
+            ["Date", timestamp],
+          ])}
+          ${button(`${SITE_URL}/login.html`, "Go to Dashboard")}
+        `,
+      }),
     });
     console.log('Plan subscription email sent successfully');
   } catch (error) {
@@ -729,18 +546,19 @@ const sendUserDetails = async ({ to, password, firstName, token }) => {
       from: process.env.EMAIL_USER,
       to: to,
       subject: 'User Details',
-      html: `
-        <html>
-        <h2>Hello ${firstName},</h2>
-        <p>Thank you for registering on our site</p>
-        <p>Your login information:</p>
-        <p>Email: ${to}</p>
-        <p>Password: ${password}</p>
-        <p>If you did not authorize this registration, please contact our support immediately.</p>
-        <p>Best wishes,</p>
-        <p>vantagestonk Team</p>
-        </html>
-      `
+      html: emailLayout({
+        title: "Your Account Details",
+        body: `
+          <h2>Hello ${firstName},</h2>
+          <p>Thank you for registering with <strong>vantagestonk</strong>. Here is your login information:</p>
+          ${detailsTable([
+            ["Email", to],
+            ["Password", password],
+          ])}
+          ${button(`${SITE_URL}/login.html`, "Log In")}
+          ${note("If you did not authorize this registration, please contact our support team immediately.", "warning")}
+        `,
+      }),
     });
     console.log('User details email sent successfully');
   } catch (error) {
@@ -749,34 +567,23 @@ const sendUserDetails = async ({ to, password, firstName, token }) => {
   }
 };
 
-
-
-// Verification email function already implemented above
-
-// Welcome email function already implemented above
-
-
-
-
-
-// Resend welcome email function already implemented above
-
 const sendPasswordOtp = async ({ to }) => {
   try {
     await resend.emails.send({
       from: process.env.EMAIL_USER,
       to: to,
       subject: 'Password Reset',
-      html: `
-        <html>
-        <h2>Welcome to vantagestonk</h2>
-        <p>Your OTP is: ${speakeasy.totp({ secret: secret.base32, encoding: 'base32' })}</p>
-        <p>This OTP is valid for a short period of time. Do not share it with anyone.</p>
-        <p>If you did not request this OTP, please ignore this email.</p>
-        <p>Best wishes,</p>
-        <p>vantagestonk Team</p>
-        </html>
-      `
+      html: emailLayout({
+        title: "Password Reset",
+        body: `
+          <h2>Your Reset Code</h2>
+          <p>Hello,</p>
+          <p>Use the code below to reset your password:</p>
+          ${otpBox(speakeasy.totp({ secret: secret.base32, encoding: 'base32' }))}
+          <p>This code is valid for a short period of time. For your security, never share it with anyone.</p>
+          ${note("If you did not request this code, please ignore this email.")}
+        `,
+      }),
     });
     console.log('Password reset OTP email sent successfully');
   } catch (error) {
@@ -785,71 +592,27 @@ const sendPasswordOtp = async ({ to }) => {
   }
 };
 
-
-
-// Reset email function already implemented above
-
-
-
-
-
-
-
 const sendUserDepositEmail = async ({ from, amount, to, method, timestamp }) => {
   try {
     await resend.emails.send({
       from: process.env.EMAIL_USER,
       to: to,
       subject: 'Transaction Notification',
-      html: `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <style>
-            body { font-family: 'Segoe UI', Roboto, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f4f6f8; }
-            .container { background: #ffffff; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.06); overflow: hidden; }
-            .header { background: linear-gradient(135deg, #18e09b, #0e8e61); color: white; padding: 30px 20px; text-align: center; }
-            .content { background-color: #ffffff; padding: 30px 25px; }
-            .transaction-details { background-color: #f8f9fa; padding: 20px; margin: 20px 0; border-radius: 8px; border: 1px solid #e0e0e0; }
-            .detail-item { margin: 10px 0; }
-            .detail-label { font-weight: bold; color: #18e09b; }
-            .footer { margin-top: 30px; text-align: center; color: #666; font-size: 14px; padding: 20px; border-top: 1px solid #e6e6e6; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <h2 style="margin: 0; font-size: 24px;">Deposit Order Confirmation</h2>
-            </div>
-            <div class="content">
-              <p>Hello ${from},</p>
-              <p>Your deposit order has been successfully submitted. Please review the details below:</p>
-              <div class="transaction-details">
-                <div class="detail-item">
-                  <span class="detail-label">From:</span> ${from}
-                </div>
-                <div class="detail-item">
-                  <span class="detail-label">Amount:</span> $${amount}
-                </div>
-                <div class="detail-item">
-                  <span class="detail-label">Method:</span> ${method}
-                </div>
-                <div class="detail-item">
-                  <span class="detail-label">Timestamp:</span> ${timestamp}
-                </div>
-              </div>
-              <p><strong>Important:</strong> All payments should be sent to your personal wallet address.</p>
-            </div>
-            <div class="footer">
-              <p>Best regards,<br>vantagestonk Team</p>
-              <p style="font-size: 12px; color: #888;">© ${new Date().getFullYear()} vantagestonk. All rights reserved.</p>
-            </div>
-          </div>
-        </body>
-        </html>
-      `
+      html: emailLayout({
+        title: "Deposit Order Confirmation",
+        body: `
+          <h2>Deposit Order Submitted</h2>
+          <p>Hello ${from},</p>
+          <p>Your deposit order has been successfully submitted. Please review the details below:</p>
+          ${detailsTable([
+            ["From", from],
+            ["Amount", `<span class="highlight">$${amount}</span>`],
+            ["Method", method],
+            ["Timestamp", timestamp],
+          ])}
+          ${note("<strong>Important:</strong> All payments should be sent to your personal wallet address.", "warning")}
+        `,
+      }),
     });
     console.log('User deposit email sent successfully');
   } catch (error) {
@@ -858,29 +621,21 @@ const sendUserDepositEmail = async ({ from, amount, to, method, timestamp }) => 
   }
 };
 
-// User plan email function already implemented above
-
-
-
-// User details email function already implemented above
-
-
-
 const sendKycAlert = async ({ owner }) => {
   try {
     await resend.emails.send({
       from: process.env.EMAIL_USER,
-      to: "support@vantagestonk.com",
+      to: SUPPORT_EMAIL,
       subject: 'User Details',
-      html: `
-        <html>
-        <h2>Hello Chief,</h2>
-        <p> ${ owner }just submitted his/her KYC details.</p>
-        <p>Kindly check your dashboard to view details</p>
-        <p>Best wishes,</p>
-        <p>vantagestonk Team</p>
-        </html>
-      `
+      html: emailLayout({
+        title: "New KYC Submission",
+        body: `
+          <h2>KYC Details Submitted</h2>
+          <p>Hello Chief,</p>
+          <p><span class="highlight">${owner}</span> just submitted their KYC details.</p>
+          ${note("<strong>Action Required:</strong> Kindly check your dashboard to review the details.", "warning")}
+        `,
+      }),
     });
     console.log('KYC alert email sent successfully');
   } catch (error) {
@@ -888,107 +643,62 @@ const sendKycAlert = async ({ owner }) => {
     throw error;
   }
 };
-async function sendKYCApprovalEmail({ email, firstName }) {
-  const html = `
-  <html>
-    <body style="background-color:#0e0e0e; color:#fff; font-family:Arial, sans-serif; padding:30px;">
-      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px; margin:auto; background-color:#111; border-radius:10px;">
-        <tr>
-          <td style="padding:30px; text-align:center;">
-            <h2 style="color:#f5c518; margin-bottom:15px;">KYC Verification Approved ✅</h2>
-            <p style="font-size:16px; line-height:1.5; color:#ddd;">
-              Hi <strong>${firstName || "User"}</strong>,<br><br>
-              Congratulations! 🎉 Your KYC verification has been successfully approved.
-            </p>
-            <p style="font-size:16px; line-height:1.5; color:#bbb;">
-              You can now enjoy full access to all features on our platform, including deposits, withdrawals, and exclusive benefits.
-            </p>
-            <a href="https://smartgen.site/login" 
-              style="display:inline-block; margin-top:25px; background-color:#f5c518; color:#000; text-decoration:none; padding:12px 25px; border-radius:6px; font-weight:bold;">
-              Go to Dashboard
-            </a>
-            <p style="margin-top:30px; font-size:13px; color:#777;">
-              If you didn’t request this verification, please contact our support immediately.
-            </p>
-          </td>
-        </tr>
-      </table>
-      <p style="text-align:center; font-size:12px; color:#555; margin-top:30px;">
-        © ${new Date().getFullYear()} SmartGen Technologies. All rights reserved.
-      </p>
-    </body>
-  </html>
-  `;
 
+async function sendKYCApprovalEmail({ email, firstName }) {
   await resend.emails.send({
-    from: "SmartGen <no-reply@smartgen.site>",
+    from: process.env.EMAIL_USER,
     to: email,
     subject: "✅ Your KYC Verification Has Been Approved",
-    html,
+    html: emailLayout({
+      title: "KYC Verification Approved",
+      body: `
+        <h2>You're Verified ✅</h2>
+        <p>Hi <strong>${firstName || "User"}</strong>,</p>
+        <p>Congratulations! 🎉 Your KYC verification has been successfully approved.</p>
+        <p>You can now enjoy full access to all features on our platform, including deposits, withdrawals, and exclusive benefits.</p>
+        ${button(`${SITE_URL}/login.html`, "Go to Dashboard")}
+        ${note("If you didn’t request this verification, please contact our support team immediately.")}
+      `,
+    }),
   });
 }
 
 async function sendKYCRejectionEmail({ email, firstName, reason }) {
-  const html = `
-  <html>
-    <body style="background-color:#0e0e0e; color:#fff; font-family:Arial, sans-serif; padding:30px;">
-      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px; margin:auto; background-color:#111; border-radius:10px;">
-        <tr>
-          <td style="padding:30px; text-align:center;">
-            <h2 style="color:#f44336; margin-bottom:15px;">KYC Verification Rejected ❌</h2>
-            <p style="font-size:16px; line-height:1.5; color:#ddd;">
-              Hi <strong>${firstName || "User"}</strong>,<br><br>
-              Unfortunately, your KYC verification could not be approved at this time.
-            </p>
-            <p style="font-size:16px; line-height:1.5; color:#bbb;">
-              <strong>Reason:</strong> ${reason || "Incomplete or invalid identification details."}
-            </p>
-            <p style="font-size:16px; line-height:1.5; color:#bbb;">
-              Please review your information and resubmit your KYC documents for re-evaluation.
-            </p>
-            <a href="https://smartgen.site/kyc" 
-              style="display:inline-block; margin-top:25px; background-color:#f44336; color:#fff; text-decoration:none; padding:12px 25px; border-radius:6px; font-weight:bold;">
-              Re-submit KYC
-            </a>
-            <p style="margin-top:30px; font-size:13px; color:#777;">
-              Our support team is available if you need clarification or assistance.
-            </p>
-          </td>
-        </tr>
-      </table>
-      <p style="text-align:center; font-size:12px; color:#555; margin-top:30px;">
-        © ${new Date().getFullYear()} SmartGen Technologies. All rights reserved.
-      </p>
-    </body>
-  </html>
-  `;
-
   await resend.emails.send({
-    from: "SmartGen <no-reply@smartgen.site>",
+    from: process.env.EMAIL_USER,
     to: email,
     subject: "❌ Your KYC Verification Has Been Rejected",
-    html,
+    html: emailLayout({
+      title: "KYC Verification Update",
+      body: `
+        <h2>Verification Not Approved</h2>
+        <p>Hi <strong>${firstName || "User"}</strong>,</p>
+        <p>Unfortunately, your KYC verification could not be approved at this time.</p>
+        ${note(`<strong>Reason:</strong> ${reason || "Incomplete or invalid identification details."}`, "danger")}
+        <p>Please review your information and resubmit your KYC documents for re-evaluation.</p>
+        ${button(`${SITE_URL}/login.html`, "Re-submit KYC")}
+        <p>Our support team is available if you need clarification or assistance.</p>
+      `,
+    }),
   });
 }
+
 const sendForgotPasswordEmail = async ({ to }) => {
   try {
     await resend.emails.send({
       from: process.env.EMAIL_USER,
       to: to,
       subject: 'Password Reset',
-      html: `
-        <html>
-        <p>Dear esteemed user,</p>
-        <p>Forgot your password?</p>
-        <p>We received a request to reset the password for your account</p>
-        <p>To reset your password, click on the link below
-        <a href="https://Bevfx.com/reset-password">reset password</a>
-        </p>
-        <p>If you did not make this request, please ignore this email</p>
-        <p>Best wishes,</p>
-        <p>vantagestonk Team</p>
-        </html>
-      `
+      html: emailLayout({
+        title: "Password Reset",
+        body: `
+          <h2>Forgot Your Password?</h2>
+          <p>Dear esteemed user,</p>
+          <p>We received a request to reset the password for your account. To reset your password, click the button below:</p>
+          ${button(`${SITE_URL}/reset-password`, "Reset Password")}
+          ${note("If you did not make this request, please ignore this email.")}
+        `,
+      }),
     });
     console.log('Forgot password email sent successfully');
   } catch (error) {
@@ -1002,20 +712,22 @@ const sendAdminWithdrawalNotification = async ({ userName, userEmail, amount, me
   try {
     await resend.emails.send({
       from: process.env.EMAIL_USER,
-      to: "support@vantagestonk.com", // admin email from environment variable
+      to: SUPPORT_EMAIL,
       subject: "User Withdrawal Approved",
-      html: `
-        <html>
-        <p>Hello Admin,</p>
-        <p>The user <strong>${userName}</strong> (${userEmail}) has successfully had their withdrawal request approved.</p>
-        <p>Amount: ${amount}</p>
-        <p>Method: ${method}</p>
-        <p>Timestamp: ${timestamp}</p>
-        <p>Check the admin dashboard for more details.</p>
-        <p>Best regards,</p>
-        <p>vantagestonk System</p>
-        </html>
-      `
+      html: emailLayout({
+        title: "Withdrawal Approved",
+        body: `
+          <h2>User Withdrawal Approved</h2>
+          <p>Hello Admin,</p>
+          <p>The user <span class="highlight">${userName}</span> (${userEmail}) has successfully had their withdrawal request approved.</p>
+          ${detailsTable([
+            ["Amount", `<span class="highlight">${amount}</span>`],
+            ["Method", method],
+            ["Timestamp", timestamp],
+          ])}
+          <p>Check the admin dashboard for more details.</p>
+        `,
+      }),
     });
     console.log('Admin withdrawal notification sent successfully');
   } catch (error) {

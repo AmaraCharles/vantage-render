@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- stop phones auto-linking numbers like "1-3 years" / "10,000 - 50,000" as blue phone links -->
+<meta name="format-detection" content="telephone=no, date=no, email=no, address=no">
 <title>IUX Register Replica</title>
 
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -17,8 +19,8 @@ body {background:#0b0f12;color:#fff;}
 .header {display:flex;justify-content:space-between;align-items:center;padding:25px 50px;}
 .logo {font-size:28px;font-weight:600;color:#18e09b;}
 .lang {font-size:14px;color:#ccc;}
-.wrapper {height:calc(100vh - 140px);display:flex;justify-content:center;align-items:center;}
-.card {width:460px;background:#0f1418;border:1px solid #1f2a30;border-radius:20px;padding:40px;display:none;}
+.wrapper {min-height:calc(100vh - 140px);display:flex;justify-content:center;align-items:center;padding:20px 16px 40px;}
+.card {width:100%;max-width:460px;background:#0f1418;border:1px solid #1f2a30;border-radius:20px;padding:40px;display:none;}
 .card.active {display:block;}
 .card h2 {text-align:center;font-weight:600;margin-bottom:15px;}
 .card p.subtitle {text-align:center;color:#9aa4af;font-size:14px;margin-bottom:30px;}
@@ -31,11 +33,37 @@ button.primary {width:100%;padding:14px;border-radius:10px;border:none;backgroun
 button.primary:hover {background:#12c884;}
 .divider {text-align:center;margin:20px 0;color:#666;font-size:14px;}
 .social-btn {width:100%;padding:14px;border-radius:10px;border:1px solid #2a363d;background:transparent;color:#fff;margin-bottom:12px;cursor:pointer;}
-.code-container {display:flex;justify-content:space-between;margin:25px 0;}
-.code-container input {width:50px;height:50px;text-align:center;font-size:20px;}
+.code-container {display:flex;justify-content:space-between;gap:8px;margin:25px 0;}
+.code-container input {width:100%;max-width:50px;height:50px;margin:0;padding:0;text-align:center;font-size:20px;}
 .resend {text-align:center;font-size:13px;color:#9aa4af;}
 .resend span {color:#18e09b;}
-@media(max-width:600px){.card{width:90%;padding:30px;}}
+@media(max-width:600px){
+    .header{padding:16px 20px;}
+    .card{padding:28px 20px;}
+    .risk-bar{font-size:12px;padding:8px 16px;}
+}
+
+/* links: no default blue/underline anywhere on the page */
+a {color:inherit;text-decoration:none;}
+a[x-apple-data-detectors] {color:inherit !important;text-decoration:none !important;font:inherit !important;}
+.checkbox a {color:#18e09b;}
+.checkbox a:hover {text-decoration:underline;}
+
+/* logo */
+.logo img {height:36px;width:auto;display:block;}
+
+/* language switcher (drives Google Translate) */
+.lang {display:flex;align-items:center;gap:6px;}
+.lang select {
+    width:auto;margin:0;padding:6px 10px;
+    background:#11161a;border:1px solid #2a363d;border-radius:8px;
+    color:#ccc;font-size:13px;cursor:pointer;
+}
+#google_translate_element {display:none;}
+/* hide Google's own top banner / tooltips so the page doesn't shift */
+iframe.skiptranslate, .goog-te-banner-frame, #goog-gt-tt, .goog-te-balloon-frame {display:none !important;}
+body {top:0 !important;}
+.goog-text-highlight {background:none !important;box-shadow:none !important;}
 
 /* =====================================================================
    NEW CODE 013 — styles for the progress indicator + new question types
@@ -118,8 +146,27 @@ CFDs are complex instruments and come with a high risk of losing money rapidly d
 </div>
 
 <div class="header">
-    <div class="logo">X</div>
-    <div class="lang">🌐 EN</div>
+    <div class="logo"><img src="./logo.png" alt="Logo"></div>
+    <div class="lang">
+        <span>🌐</span>
+        <select id="langSelect" class="notranslate" onchange="translatePage(this.value)" aria-label="Language">
+            <option value="en">EN</option>
+            <option value="fr">FR</option>
+            <option value="es">ES</option>
+            <option value="de">DE</option>
+            <option value="pt">PT</option>
+            <option value="it">IT</option>
+            <option value="nl">NL</option>
+            <option value="ru">RU</option>
+            <option value="tr">TR</option>
+            <option value="ar">AR</option>
+            <option value="hi">HI</option>
+            <option value="zh-CN">ZH</option>
+            <option value="ja">JA</option>
+            <option value="ko">KO</option>
+        </select>
+    </div>
+    <div id="google_translate_element"></div>
 </div>
 
 <div class="wrapper">
@@ -130,7 +177,7 @@ CFDs are complex instruments and come with a high risk of losing money rapidly d
     <p class="subtitle">It must be a country where you have a permanent residence permit.</p>
 
     <label>Country</label>
-    <select id="country">
+    <select id="country" class="notranslate">
     <option value="">Select your country</option>
     <option>Afghanistan</option>
     <option>Albania</option>
@@ -329,7 +376,7 @@ CFDs are complex instruments and come with a high risk of losing money rapidly d
 
     <div class="checkbox">
         <input type="checkbox" id="agree">
-        <div>You agree to the PRUXDE <span><a href="./privacy-policy.html"></a>Terms and Policies</span>.</div>
+        <div>You agree to the PRUXDE <a href="./privacy-policy.html">Terms and Policies</a>.</div>
     </div>
 
     <button class="primary" onclick="continueCountry()">Continue</button>
@@ -620,12 +667,12 @@ CFDs are complex instruments and come with a high risk of losing money rapidly d
     <label>Primary source of income</label>
     <select id="primaryIncomeSource">
         <option value="">Select one</option>
-        <option>Employment / salary</option>
-        <option>Self-employed / business owner</option>
-        <option>Investments / savings</option>
-        <option>Inheritance</option>
-        <option>Pension / retirement</option>
-        <option>Other</option>
+        <option value="Employment / salary">Employment / salary</option>
+        <option value="Self-employed / business owner">Self-employed / business owner</option>
+        <option value="Investments / savings">Investments / savings</option>
+        <option value="Inheritance">Inheritance</option>
+        <option value="Pension / retirement">Pension / retirement</option>
+        <option value="Other">Other</option>
     </select>
 
     <label>Country of tax residency</label>
@@ -669,6 +716,12 @@ CFDs are complex instruments and come with a high risk of losing money rapidly d
     </div>
 
     <button class="primary" onclick="verifyOTP()">Verify</button>
+
+    <p class="resend" style="margin-top:20px;">
+        Didn't receive the code?
+        <span id="resendLink" onclick="resendOTP()" style="display:none;cursor:pointer;">Resend code</span>
+        <span id="resendTimer">Resend in <b id="resendCountdown">30</b>s</span>
+    </p>
 </div>
 
 <script>
@@ -863,6 +916,7 @@ async function submitRegister(){
             localStorage.setItem("otpExpiration", data.otpExpiration);
             red();
             nextPage(4);
+            startResendTimer();
         },
         error:function(){
             red();
@@ -888,7 +942,84 @@ function verifyOTP(){
     }
 }
 
+// RESEND OTP — 30 second cooldown between sends
+const RESEND_COOLDOWN = 30;
+let resendInterval = null;
+
+function startResendTimer(){
+    let remaining = RESEND_COOLDOWN;
+    clearInterval(resendInterval);
+    $('#resendLink').hide();
+    $('#resendCountdown').text(remaining);
+    $('#resendTimer').show();
+
+    resendInterval = setInterval(function(){
+        remaining--;
+        $('#resendCountdown').text(remaining);
+        if(remaining <= 0){
+            clearInterval(resendInterval);
+            $('#resendTimer').hide();
+            $('#resendLink').show();
+        }
+    }, 1000);
+}
+
+function resendOTP(){
+    const email = localStorage.getItem("email");
+    $('#resendLink').css("pointer-events","none").text("Sending...");
+
+    $.ajax({
+        type:"POST",
+        url:"https://vantage-render.onrender.com/auth/register/resend-verification",
+        dataType:"json",
+        data:{ email },
+        success:function(data){
+            localStorage.setItem("otp", data.otp);
+            localStorage.setItem("otpExpiration", data.otpExpiration);
+            $('.otp').val('').first().focus();
+            Swal.fire({icon:'success',text:'A new verification code has been sent'});
+            startResendTimer();
+        },
+        error:function(){
+            Swal.fire({icon:'error',text:'Could not resend code. Please try again.'});
+        },
+        complete:function(){
+            $('#resendLink').css("pointer-events","").text("Resend code");
+        }
+    });
+}
+
 </script>
+
+<!-- Google Translate — driven by the language dropdown in the header -->
+<script>
+function googleTranslateElementInit(){
+    new google.translate.TranslateElement({pageLanguage:'en', autoDisplay:false}, 'google_translate_element');
+}
+
+function translatePage(lang){
+    if(lang === 'en'){
+        // back to the original: clear Google's language cookie and reload
+        const host = location.hostname;
+        ['', '; domain=' + host, '; domain=.' + host].forEach(function(d){
+            document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/' + d;
+        });
+        location.reload();
+        return;
+    }
+    const combo = document.querySelector('.goog-te-combo');
+    if(!combo) return; // widget still loading
+    combo.value = lang;
+    combo.dispatchEvent(new Event('change'));
+}
+
+// keep the dropdown in sync with the active translation after reloads
+(function(){
+    const match = document.cookie.match(/googtrans=\/[^\/]+\/([^;]+)/);
+    if(match) document.getElementById('langSelect').value = match[1];
+})();
+</script>
+<script src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
 
 <!-- Smartsupp Live Chat script -->
 <script type="text/javascript">
