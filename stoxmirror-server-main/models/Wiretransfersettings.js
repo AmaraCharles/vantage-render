@@ -21,6 +21,7 @@ const WireTransferSettingsSchema = new mongoose.Schema({
     default: false, // off until an admin explicitly turns it on
   },
   bankName: { type: String, default: "DEMO BANK" },
+  bankAddress: { type: String, default: "" },
   accountName: { type: String, default: "DEMO ACCOUNT — PORTFOLIO PROJECT" },
   accountNumber: { type: String, default: "0000 0000 0000 0000" },
   routingOrSortCode: { type: String, default: "000000" },

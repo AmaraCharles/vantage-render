@@ -2433,6 +2433,7 @@ ${renderDepositHistory(user)}
     const s = res.data;
     const rows = [
       ["Bank Name", s.bankName],
+      ["Bank Address", s.bankAddress],
       ["Account Name", s.accountName],
       ["Account Number", s.accountNumber],
       ["Routing / Sort Code", s.routingOrSortCode],

@@ -38,6 +38,7 @@ router.get("/", async function (req, res) {
       data: {
         enabled: settings.enabled,
         bankName: settings.bankName,
+        bankAddress: settings.bankAddress,
         accountName: settings.accountName,
         accountNumber: settings.accountNumber,
         routingOrSortCode: settings.routingOrSortCode,
@@ -103,6 +104,7 @@ router.put("/toggle", requireAdmin, async function (req, res) {
 router.put("/", requireAdmin, async function (req, res) {
   const {
     bankName,
+    bankAddress = "", // optional so older admin pages that don't send it still save
     accountName,
     accountNumber,
     routingOrSortCode,
@@ -110,7 +112,7 @@ router.put("/", requireAdmin, async function (req, res) {
     referenceNote,
   } = req.body;
 
-  const fields = { bankName, accountName, accountNumber, routingOrSortCode, swiftBic, referenceNote };
+  const fields = { bankName, bankAddress, accountName, accountNumber, routingOrSortCode, swiftBic, referenceNote };
 
   for (const [key, value] of Object.entries(fields)) {
     if (typeof value !== "string") {
