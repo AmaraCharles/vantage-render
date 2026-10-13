@@ -27,7 +27,7 @@ const WireTransferSettingsSchema = new mongoose.Schema({
   swiftBic: { type: String, default: "DEMOXX00" },
   referenceNote: {
     type: String,
-    default: "Use your email as payment reference",
+    default: "Use your email/fullname as payment reference",
   },
   updatedAt: { type: Date, default: Date.now },
   updatedBy: { type: String, default: null }, // admin email, for audit trail
