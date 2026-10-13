@@ -148,6 +148,9 @@
 
     *{box-sizing:border-box;font-family:"Poppins",system-ui,Segoe UI,Roboto,Arial,sans-serif}
     html,body{height:100%;margin:0;background:var(--bg);color:var(--text);transition:background .25s,color .25s}
+    /* the dark palette lives on body, so give <html> the dark background too —
+       otherwise anything taller than the screen shows a light strip below it */
+    html:has(> body.dark){background:#0f1720;}
     .app {
       display:flex;
       height:100vh;
@@ -253,6 +256,37 @@
     .row { display:flex; gap:12px; align-items:center; }
     .col { display:flex; flex-direction:column; gap:6px; }
     .form-row { display:flex; gap:12px; }
+    /* stack each label above its input inside form columns */
+    .form-row > div { display:flex; flex-direction:column; gap:4px; min-width:0; }
+    .form-row > div > label { margin-top:8px; }
+    .form-row > div > label:first-child { margin-top:0; }
+    /* inputs were invisible in dark mode (6% black border on a near-black card) */
+    body.dark .input { border-color:rgba(255,255,255,0.12); background:rgba(255,255,255,0.03); }
+    /* ── Registration details: collapsible groups of label/value rows ── */
+    .sv-head { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
+    .sv-badge { padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600; }
+    .sv-badge-ok { background:rgba(40,167,69,0.15); color:var(--success); }
+    .sv-badge-pending { background:rgba(231,76,60,0.12); color:var(--danger); }
+    .sv-group { border:1px solid rgba(127,127,127,0.18); border-radius:10px; margin-top:8px; overflow:hidden; }
+    .sv-group summary {
+      cursor:pointer; list-style:none; padding:12px 14px; font-weight:600; font-size:14px;
+      display:flex; justify-content:space-between; align-items:center; user-select:none;
+    }
+    .sv-group summary::-webkit-details-marker { display:none; }
+    .sv-group summary::after { content:'▾'; transition:transform .2s; opacity:.7; }
+    .sv-group[open] summary::after { transform:rotate(180deg); }
+    .sv-group[open] summary { border-bottom:1px solid rgba(127,127,127,0.18); }
+    .sv-grid { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:0 24px; padding:4px 14px 10px; }
+    .sv-row { display:flex; flex-direction:column; gap:2px; padding:8px 0; border-bottom:1px dashed rgba(127,127,127,0.15); min-width:0; }
+    .sv-label { font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted, #8a94a6); }
+    .sv-value { color:var(--text); font-size:14px; font-weight:500; overflow-wrap:anywhere; }
+    @media (max-width: 640px) {
+      .sv-grid { grid-template-columns:1fr; }
+    }
+    /* action buttons under the edit-user form wrap instead of overflowing on small screens */
+    #edit-user .edit-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:12px; }
+    #edit-user .edit-actions .btn, #edit-user .edit-actions .small-btn { margin:0 !important; }
+
     .input { padding:10px; border-radius:8px; border:1px solid rgba(0,0,0,0.06); background:transparent; color:var(--text); min-width:0; }
     .action-group { display:flex; gap:8px; }
 
@@ -462,6 +496,7 @@
         <a href="#" data-section="kyc-center">KYC Center</a>
         <a href="#" data-section="referrals">Referrals</a>
         <a href="#" data-section="deposits">Deposits</a>
+        <a href="#" data-section="deposit-wallets">🔐 Deposit Wallets</a>
         <a href="#" data-section="wire-transfer-settings">💳 Wire Transfer</a>
         <!-- <a href="#" data-section="demo-settings">🎮 Demo Deposit</a> -->
         <a href="#" data-section="traders-list">Traders List</a>
@@ -607,6 +642,50 @@
           </div>
         </section>
 
+        <!-- Crypto Deposit Wallets -->
+        <section id="deposit-wallets" class="card section" style="display:none">
+          <div class="section-title">🔐 Deposit Wallets</div>
+
+          <div id="dwIntegrityAlert" class="card" style="display:none;margin-bottom:12px;border:1px solid var(--danger);color:var(--danger);">
+            <strong>Integrity check failed.</strong> The saved wallets were changed outside the admin panel, so users are currently shown <em>no</em> crypto deposit channels.
+            Review every address below and save to restore them.
+          </div>
+
+          <div class="card" style="margin-bottom:12px;">
+            <div style="font-weight:700;">Crypto addresses shown on the Fund Account page</div>
+            <div class="muted" style="font-size:13px;margin-top:4px;">
+              Users only see enabled wallets listed here. Saving requires your password, every change is logged and emailed to support.
+              Double-check each address — deposits sent to a wrong address cannot be recovered.
+            </div>
+            <div id="dwMeta" class="muted" style="font-size:13px;margin-top:6px;"></div>
+          </div>
+
+          <div class="card">
+            <div class="table-wrapper">
+              <table>
+                <thead><tr><th>Label (shown to users)</th><th>ID</th><th>Network</th><th>Address</th><th>Enabled</th><th></th></tr></thead>
+                <tbody id="dwTableBody"></tbody>
+              </table>
+            </div>
+            <div id="dwEmpty" class="muted" style="display:none;margin:10px 0;">No wallets yet — users can't make crypto deposits until you add one.</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+              <button id="dwAddBtn" class="btn ghost">+ Add Wallet</button>
+              <button id="dwSaveBtn" class="btn">Save Changes</button>
+              <button id="dwReloadBtn" class="btn ghost">Discard &amp; Reload</button>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:12px;">
+            <div style="font-weight:700;margin-bottom:8px;">Change history</div>
+            <div class="table-wrapper">
+              <table>
+                <thead><tr><th>Time</th><th>Admin</th><th>IP</th><th>Action</th><th>Details</th></tr></thead>
+                <tbody id="dwHistoryBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
         <!-- Wire Transfer Settings -->
         <section id="wire-transfer-settings" class="card section" style="display:none">
           <div class="section-title">💳 Wire Transfer</div>
@@ -681,9 +760,9 @@
               <button id="demoSaveBtn" class="btn">Save Message</button>
               <button id="demoPreviewBtn" class="btn ghost">Preview</button>
               <button id="demoDeleteBtn" class="btn" style="background:var(--danger);">Delete Message</button>
-            </div> -->
+            </div>
           </div>
-        </section>
+        </section> -->
 
         <!-- Traders List -->
         <section id="traders-list" class="card section" style="display:none">
@@ -804,77 +883,51 @@
               <label class="muted">Referral Bonus</label><input id="referalBonus" class="input" />
                <label class="muted">Referred By</label><input id="referredBy" class="input" />
               <label class="muted">_id</label><input id="_id" class="input" readonly />
-              <div style="margin-top:12px">
+              <div class="edit-actions">
                 <button id="enableBtn" class="small-btn success">Enable</button>
                 <button id="disableBtn" class="small-btn danger">Disable</button>
                 <button id="updateBtn_user" class="btn">Save</button>
-                <button id="loginAsUserBtn" class="btn" style="background:var(--success);margin-left:8px;">Login as User</button>
-                <div class="live-section muted" style="display:inline-block;margin-left:12px"></div>
+                <button id="loginAsUserBtn" class="btn" style="background:var(--success);">Login as User</button>
+                <div class="live-section muted"></div>
               </div>
             </div>
           </div>
 
-          <!-- ── KYC SURVEY DATA ── -->
+          <!-- ── REGISTRATION / KYC SURVEY DATA (collapsible groups) ── -->
           <div class="card" style="margin-top:14px;" id="surveyCard">
-            <div class="section-title" style="font-size:1rem;margin-bottom:12px;">📋 KYC Survey Data
-              <span id="surveyCompletedBadge" style="display:none;margin-left:8px;padding:3px 10px;border-radius:999px;background:rgba(40,167,69,0.15);color:var(--success);font-size:12px;font-weight:600;">Completed</span>
-              <span id="surveyPendingBadge" style="display:none;margin-left:8px;padding:3px 10px;border-radius:999px;background:rgba(231,76,60,0.12);color:var(--danger);font-size:12px;font-weight:600;">Not Completed</span>
+            <div class="sv-head">
+              <div class="section-title" style="font-size:1rem;margin:0;">📋 Registration Details</div>
+              <span id="surveyCompletedBadge" class="sv-badge sv-badge-ok" style="display:none;">Completed</span>
+              <span id="surveyPendingBadge" class="sv-badge sv-badge-pending" style="display:none;">Not Completed</span>
             </div>
-
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px 18px;">
-
-              <!-- Contact & Address -->
-              <div>
-                <div class="muted" style="font-weight:600;margin-bottom:6px;font-size:13px;text-transform:uppercase;letter-spacing:.04em;">📍 Contact &amp; Address</div>
-                <label class="muted" style="font-size:12px">Phone</label>
-                <input id="sv_phone" class="input" readonly style="font-size:13px;padding:8px;" />
-                <label class="muted" style="font-size:12px">Account Currency</label>
-                <input id="sv_currency" class="input" readonly style="font-size:13px;padding:8px;" />
-                <label class="muted" style="font-size:12px">Terms Accepted</label>
-                <input id="sv_terms" class="input" readonly style="font-size:13px;padding:8px;" />
-                <label class="muted" style="font-size:12px">House No.</label>
-                <input id="sv_houseNo" class="input" readonly style="font-size:13px;padding:8px;" />
-                <label class="muted" style="font-size:12px">Street Address</label>
-                <input id="sv_street" class="input" readonly style="font-size:13px;padding:8px;" />
-                <label class="muted" style="font-size:12px">City / Town / Village</label>
-                <input id="sv_city" class="input" readonly style="font-size:13px;padding:8px;" />
-                <label class="muted" style="font-size:12px">Province</label>
-                <input id="sv_province" class="input" readonly style="font-size:13px;padding:8px;" />
-                <label class="muted" style="font-size:12px">Zip / Postal Code</label>
-                <input id="sv_zip" class="input" readonly style="font-size:13px;padding:8px;" />
-                <label class="muted" style="font-size:12px">Survey Country</label>
-                <input id="sv_country" class="input" readonly style="font-size:13px;padding:8px;" />
+            <details class="sv-group" open>
+              <summary>📍 Contact &amp; Account</summary>
+              <div class="sv-grid">
+                <div class="sv-row"><span class="sv-label">Phone</span><span id="sv_phone" class="sv-value">—</span></div>
+                <div class="sv-row"><span class="sv-label">Account Currency</span><span id="sv_currency" class="sv-value">—</span></div>
+                <div class="sv-row"><span class="sv-label">Terms Accepted</span><span id="sv_terms" class="sv-value">—</span></div>
+                <div class="sv-row"><span class="sv-label">Survey Country</span><span id="sv_country" class="sv-value">—</span></div>
               </div>
-
-              <!-- Trading Experience -->
-              <div>
-                <div class="muted" style="font-weight:600;margin-bottom:6px;font-size:13px;text-transform:uppercase;letter-spacing:.04em;">📈 Trading Experience</div>
-                <label class="muted" style="font-size:12px">Years of Experience</label>
-                <input id="sv_years" class="input" readonly style="font-size:13px;padding:8px;" />
-                <label class="muted" style="font-size:12px">Trading Frequency</label>
-                <input id="sv_freq" class="input" readonly style="font-size:13px;padding:8px;" />
-                <label class="muted" style="font-size:12px">Instruments Traded</label>
-                <input id="sv_instruments" class="input" readonly style="font-size:13px;padding:8px;" />
-                <label class="muted" style="font-size:12px">Knowledge Level</label>
-                <input id="sv_knowledge" class="input" readonly style="font-size:13px;padding:8px;" />
-                <label class="muted" style="font-size:12px">Preferred Markets</label>
-                <input id="sv_markets" class="input" readonly style="font-size:13px;padding:8px;" />
-                <label class="muted" style="font-size:12px">Trading Platforms Used</label>
-                <input id="sv_platforms" class="input" readonly style="font-size:13px;padding:8px;" />
+            </details>
+            <details class="sv-group">
+              <summary>📈 Trading Experience</summary>
+              <div class="sv-grid">
+                <div class="sv-row"><span class="sv-label">Years of Experience</span><span id="sv_years" class="sv-value">—</span></div>
+                <div class="sv-row"><span class="sv-label">Trading Frequency</span><span id="sv_freq" class="sv-value">—</span></div>
+                <div class="sv-row"><span class="sv-label">Instruments Traded</span><span id="sv_instruments" class="sv-value">—</span></div>
+                <div class="sv-row"><span class="sv-label">Knowledge Level</span><span id="sv_knowledge" class="sv-value">—</span></div>
+                <div class="sv-row"><span class="sv-label">Preferred Markets</span><span id="sv_markets" class="sv-value">—</span></div>
+                <div class="sv-row"><span class="sv-label">Trading Platforms Used</span><span id="sv_platforms" class="sv-value">—</span></div>
               </div>
-
-              <!-- Annual Earnings -->
-              <div>
-                <div class="muted" style="font-weight:600;margin-bottom:6px;font-size:13px;text-transform:uppercase;letter-spacing:.04em;">💰 Annual Earnings/ Net Worth</div>
-                <label class="muted" style="font-size:12px">Annual Income (USD)</label>
-                <input id="sv_income" class="input" readonly style="font-size:13px;padding:8px;" />
-                <label class="muted" style="font-size:12px">Primary Source of Income</label>
-                <input id="sv_incomeSource" class="input" readonly style="font-size:13px;padding:8px;" />
-                <label class="muted" style="font-size:12px">Country of Tax Residency</label>
-                <input id="sv_taxCountry" class="input" readonly style="font-size:13px;padding:8px;" />
+            </details>
+            <details class="sv-group">
+              <summary>💰 Annual Earnings / Net Worth</summary>
+              <div class="sv-grid">
+                <div class="sv-row"><span class="sv-label">Annual Income</span><span id="sv_income" class="sv-value">—</span></div>
+                <div class="sv-row"><span class="sv-label">Primary Source of Income</span><span id="sv_incomeSource" class="sv-value">—</span></div>
+                <div class="sv-row"><span class="sv-label">Country of Tax Residency</span><span id="sv_taxCountry" class="sv-value">—</span></div>
               </div>
-
-            </div>
+            </details>
           </div>
         </section>
 
@@ -2006,6 +2059,181 @@ function sendUserDetail(user) {
   </script>
 
   <script>
+  /* Crypto Deposit Wallets admin — GET /settings/wallets/admin, PUT /settings/wallets.
+     The token is attached by AdminAuth; saving also needs the admin's password
+     and the version that was loaded (the server rejects stale saves). */
+  (function DepositWalletsAdminScript() {
+    const API = "https://vantage-render.onrender.com/settings/wallets";
+    let state = { wallets: [], version: 0, networks: [] };
+    let loadedSnapshot = [];
+
+    const $id = (id) => document.getElementById(id);
+    const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const slug = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^[^a-z]+|_+$/g, "").slice(0, 32);
+    const errMsg = (err, fallback) => (err && err.responseJSON && err.responseJSON.message) || fallback;
+
+    function el(tag, props, children) {
+      const node = document.createElement(tag);
+      Object.assign(node, props || {});
+      (children || []).forEach((c) => node.appendChild(c));
+      return node;
+    }
+
+    function renderRows() {
+      const body = $id("dwTableBody");
+      body.innerHTML = "";
+      $id("dwEmpty").style.display = state.wallets.length ? "none" : "block";
+
+      state.wallets.forEach((w, i) => {
+        const label = el("input", { className: "input", value: w.label, placeholder: "e.g. USDT (TRC20)", maxLength: 40 });
+        const key = el("input", { className: "input", value: w.key, placeholder: "usdt_trc20", maxLength: 32 });
+        const network = el("select", { className: "input" }, state.networks.map((n) => el("option", { value: n.id, textContent: n.name })));
+        network.value = w.network || (state.networks[0] && state.networks[0].id) || "";
+        const address = el("input", { className: "input", value: w.address, placeholder: "Wallet address", spellcheck: false, autocomplete: "off" });
+        address.style.cssText = "width:100%;min-width:280px;font-family:monospace;";
+        const enabled = el("input", { type: "checkbox", checked: w.enabled !== false });
+        const remove = el("button", { className: "btn", textContent: "Remove", type: "button" });
+        remove.style.background = "var(--danger)";
+
+        // Existing ids are what past deposits were recorded under — keep them stable.
+        if (w._existing) { key.readOnly = true; key.title = "IDs of saved wallets can't be changed"; }
+
+        label.addEventListener("input", () => {
+          w.label = label.value;
+          if (!w._existing && !w._keyTouched) { w.key = slug(label.value); key.value = w.key; }
+        });
+        key.addEventListener("input", () => { w.key = key.value.trim(); w._keyTouched = true; });
+        network.addEventListener("change", () => { w.network = network.value; });
+        address.addEventListener("input", () => { w.address = address.value.trim(); });
+        enabled.addEventListener("change", () => { w.enabled = enabled.checked; });
+        remove.addEventListener("click", () => { state.wallets.splice(i, 1); renderRows(); });
+
+        const td = (child) => el("td", {}, [child]);
+        body.appendChild(el("tr", {}, [td(label), td(key), td(network), td(address), td(enabled), td(remove)]));
+      });
+    }
+
+    function renderHistory(history) {
+      const body = $id("dwHistoryBody");
+      body.innerHTML = "";
+      (history || []).forEach((h) => {
+        let details = h.reason || "";
+        if (h.action === "update") {
+          details = `v${h.fromVersion} → v${h.toVersion}: ` +
+            (h.after || []).map((w) => `${w.label}${w.enabled ? "" : " (off)"} ${w.address}`).join(" | ");
+        }
+        const cells = [new Date(h.at).toLocaleString(), h.adminEmail, h.ip, h.action, details];
+        const tr = el("tr", {}, cells.map((c) => el("td", { textContent: c == null ? "" : String(c) })));
+        if (h.action === "denied") tr.style.color = "var(--danger)";
+        body.appendChild(tr);
+      });
+    }
+
+    async function load() {
+      try {
+        const res = await $.ajax({ type: "GET", url: API + "/admin", dataType: "json", cache: false, timeout: 30000 });
+        const d = res.data;
+        state = {
+          wallets: d.wallets.map((w) => Object.assign({}, w, { _existing: true })),
+          version: d.version,
+          networks: d.networks,
+        };
+        loadedSnapshot = d.wallets.map((w) => Object.assign({}, w));
+        $id("dwIntegrityAlert").style.display = d.integrityOk ? "none" : "block";
+        $id("dwMeta").textContent = d.updatedAt
+          ? `Version ${d.version} · last changed ${new Date(d.updatedAt).toLocaleString()} by ${d.updatedBy}`
+          : "Never saved.";
+        renderRows();
+        renderHistory(d.history);
+      } catch (err) {
+        console.error("Error loading deposit wallets:", err);
+        if (err.status !== 401) Swal.fire({ icon: "error", title: "Load failed", text: errMsg(err, "Could not load deposit wallets.") });
+      }
+    }
+
+    function describeChanges(next) {
+      const before = new Map(loadedSnapshot.map((w) => [w.key, w]));
+      const after = new Map(next.map((w) => [w.key, w]));
+      const lines = [];
+      next.forEach((w) => {
+        const old = before.get(w.key);
+        if (!old) lines.push(`<b style="color:#28a745">ADD</b> ${esc(w.label)}: <code>${esc(w.address)}</code>`);
+        else {
+          if (old.address !== w.address) lines.push(`<b style="color:#e0a800">ADDRESS</b> ${esc(w.label)}:<br><s>${esc(old.address)}</s><br>→ <code>${esc(w.address)}</code>`);
+          if (old.label !== w.label || old.network !== w.network) lines.push(`<b>EDIT</b> ${esc(old.label)} → ${esc(w.label)} [${esc(w.network)}]`);
+          if (old.enabled !== w.enabled) lines.push(`<b>${w.enabled ? "ENABLE" : "DISABLE"}</b> ${esc(w.label)}`);
+        }
+      });
+      loadedSnapshot.forEach((w) => { if (!after.has(w.key)) lines.push(`<b style="color:#dc3545">REMOVE</b> ${esc(w.label)}: <code>${esc(w.address)}</code>`); });
+      return lines;
+    }
+
+    async function save() {
+      const next = state.wallets.map((w) => ({
+        key: String(w.key || "").trim(),
+        label: String(w.label || "").trim(),
+        network: w.network,
+        address: String(w.address || "").trim(),
+        enabled: w.enabled !== false,
+      }));
+      const missing = next.findIndex((w) => !w.key || !w.label || !w.address);
+      if (missing !== -1) {
+        return Swal.fire({ icon: "warning", title: "Incomplete wallet", text: `Wallet #${missing + 1} needs a label, ID and address.` });
+      }
+      const changes = describeChanges(next);
+      if (!changes.length) return Swal.fire({ icon: "info", title: "No changes", timer: 1200, showConfirmButton: false });
+
+      const result = await Swal.fire({
+        icon: "warning",
+        title: "Confirm deposit wallet changes",
+        html:
+          `<div style="text-align:left;font-size:13px;max-height:260px;overflow:auto;word-break:break-all;">${changes.join("<hr style='margin:6px 0'>")}</div>` +
+          '<p style="font-size:13px;margin:12px 0 0;">Verify every address character by character, then enter your password.</p>' +
+          '<input id="dwPassword" type="password" class="swal2-input" placeholder="Your admin password" autocomplete="current-password">',
+        showCancelButton: true,
+        confirmButtonText: "Save wallets",
+        showLoaderOnConfirm: true,
+        allowOutsideClick: () => !Swal.isLoading(),
+        didOpen: () => $id("dwPassword").focus(),
+        preConfirm: async () => {
+          const currentPassword = $id("dwPassword").value;
+          if (!currentPassword) return Swal.showValidationMessage("Enter your password");
+          try {
+            return await $.ajax({
+              type: "PUT", url: API, dataType: "json", contentType: "application/json", timeout: 30000,
+              data: JSON.stringify({ wallets: next, version: state.version, currentPassword }),
+            });
+          } catch (err) {
+            if (err.status === 409) return { conflict: true, message: errMsg(err, "Conflict") };
+            return Swal.showValidationMessage(errMsg(err, "Could not save deposit wallets."));
+          }
+        },
+      });
+
+      if (!result.isConfirmed) return;
+      if (result.value && result.value.conflict) {
+        await Swal.fire({ icon: "error", title: "Not saved", text: result.value.message });
+      } else {
+        Swal.fire({ icon: "success", title: "Deposit wallets saved", timer: 1500, showConfirmButton: false });
+      }
+      await load();
+    }
+
+    document.addEventListener("DOMContentLoaded", function () {
+      if (!$id("deposit-wallets")) return;
+      $id("dwAddBtn").addEventListener("click", () => {
+        state.wallets.push({ key: "", label: "", network: (state.networks[0] && state.networks[0].id) || "", address: "", enabled: true });
+        renderRows();
+      });
+      $id("dwSaveBtn").addEventListener("click", save);
+      $id("dwReloadBtn").addEventListener("click", load);
+    });
+
+    window.loadDepositWallets = load;
+  })();
+  </script>
+
+  <script>
   /* Demo Deposit admin — CRUD for the /demo-settings endpoints.
      Same auth pattern as the wire transfer script above (adminToken). */
   (function DemoSettingsAdminScript() {
@@ -2883,26 +3111,21 @@ const useremmt=useremm.trim().replace(/^"|"$/g, '');
 
       // ── Populate Survey Fields ──────────────────────────────────
       // Contact & Address
-      $('#sv_phone').val(userInfo.phone || '—');
-      $('#sv_currency').val(userInfo.currency || '—');
-      $('#sv_terms').val(userInfo.termsAcceptedAt ? new Date(userInfo.termsAcceptedAt).toLocaleString() : '—');
-      $('#sv_houseNo').val(userInfo.survey_houseNo || '—');
-      $('#sv_street').val(userInfo.survey_streetAddress || '—');
-      $('#sv_city').val(userInfo.survey_city || '—');
-      $('#sv_province').val(userInfo.survey_province || '—');
-      $('#sv_zip').val(userInfo.survey_zipCode || '—');
-      $('#sv_country').val(userInfo.survey_country || '—');
+      $('#sv_phone').text(userInfo.phone || '—');
+      $('#sv_currency').text(userInfo.currency || '—');
+      $('#sv_terms').text(userInfo.termsAcceptedAt ? new Date(userInfo.termsAcceptedAt).toLocaleString() : '—');
+      $('#sv_country').text(userInfo.survey_country || '—');
       // Trading Experience
-      $('#sv_years').val(userInfo.survey_yearsOfExperience || '—');
-      $('#sv_freq').val(userInfo.survey_tradingFrequency || '—');
-      $('#sv_instruments').val(userInfo.survey_instrumentsTraded || '—');
-      $('#sv_knowledge').val(userInfo.survey_knowledgeLevel || '—');
-      $('#sv_markets').val(userInfo.survey_preferredMarkets || '—');
-      $('#sv_platforms').val(userInfo.survey_tradingPlatforms || '—');
+      $('#sv_years').text(userInfo.survey_yearsOfExperience || '—');
+      $('#sv_freq').text(userInfo.survey_tradingFrequency || '—');
+      $('#sv_instruments').text(userInfo.survey_instrumentsTraded || '—');
+      $('#sv_knowledge').text(userInfo.survey_knowledgeLevel || '—');
+      $('#sv_markets').text(userInfo.survey_preferredMarkets || '—');
+      $('#sv_platforms').text(userInfo.survey_tradingPlatforms || '—');
       // Annual Earnings
-      $('#sv_income').val(userInfo.survey_annualIncome || '—');
-      $('#sv_incomeSource').val(userInfo.survey_primaryIncomeSource || '—');
-      $('#sv_taxCountry').val(userInfo.survey_taxResidency || '—');
+      $('#sv_income').text(userInfo.survey_annualIncome || '—');
+      $('#sv_incomeSource').text(userInfo.survey_primaryIncomeSource || '—');
+      $('#sv_taxCountry').text(userInfo.survey_taxResidency || '—');
 
       // Survey completion badge
       if (userInfo.surveyCompleted) {
@@ -2940,6 +3163,10 @@ const useremmt=useremm.trim().replace(/^"|"$/g, '');
 
       case 'deposits':
         setTimeout(() => window.loadDeposits && window.loadDeposits(), 300);
+        break;
+
+      case 'deposit-wallets':
+        setTimeout(() => window.loadDepositWallets && window.loadDepositWallets(), 200);
         break;
 
       case 'traders-list':

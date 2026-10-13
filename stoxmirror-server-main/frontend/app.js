@@ -9,6 +9,108 @@ function apiLog(action, data) {
   localStorage.setItem('apiLogs', JSON.stringify(logs));
   console.log('API Call:', action, data);
 }
+// ==================== CURRENCY ====================
+// Every amount is stored in USD (admins always enter USD). Each user sees
+// amounts converted into the currency they picked at registration, and the
+// amounts they type are in that currency and converted back to USD before
+// anything is validated or sent to the server.
+const FX_CACHE_KEY = 'fxRatesUSD';
+const FX_TTL_MS = 6 * 60 * 60 * 1000; // refresh rates every 6 hours
+let fxCurrency = 'USD';
+let fxRate = 1; // units of fxCurrency per 1 USD
+
+// Turn any money-ish value into a number: 1234.5, "1,234.50", "1.234,50",
+// "$ 5,000", "₦12,500.75" ... (thousands separators and symbols never break it)
+function parseAmount(value) {
+  if (typeof value === 'number') return isFinite(value) ? value : 0;
+  if (value == null) return 0;
+  let s = String(value).trim().replace(/[^\d.,-]/g, '');
+  if (!s) return 0;
+  const lastComma = s.lastIndexOf(',');
+  const lastDot = s.lastIndexOf('.');
+  if (lastComma > -1 && lastDot > -1) {
+    // both present: whichever comes last is the decimal separator
+    s = lastComma > lastDot ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
+  } else if (lastComma > -1) {
+    // "1,234" / "1,234,567" are thousands; "12,5" is a decimal comma
+    s = /^-?\d{1,3}(,\d{3})+$/.test(s) ? s.replace(/,/g, '') : s.replace(/,(?=.*,)/g, '').replace(',', '.');
+  } else if ((s.match(/\./g) || []).length > 1) {
+    // "1.234.567" — dots used as thousands separators
+    s = s.replace(/\./g, '');
+  }
+  const n = parseFloat(s);
+  return isFinite(n) ? n : 0;
+}
+
+// Pull a 3-letter ISO code out of whatever was stored ("NGN", "ngn",
+// "NGN — Nigerian Naira", "NGN, Nigerian Naira" ...)
+function extractCurrencyCode(value) {
+  const m = String(value || '').toUpperCase().match(/\b[A-Z]{3}\b/);
+  return m ? m[0] : 'USD';
+}
+
+async function loadUsdRates() {
+  let cached = null;
+  try { cached = JSON.parse(localStorage.getItem(FX_CACHE_KEY) || 'null'); } catch (e) {}
+  if (cached && cached.rates && Date.now() - cached.ts < FX_TTL_MS) return cached.rates;
+  try {
+    const res = await fetch('https://open.er-api.com/v6/latest/USD');
+    const data = await res.json();
+    if (data && data.result === 'success' && data.rates) {
+      localStorage.setItem(FX_CACHE_KEY, JSON.stringify({ ts: Date.now(), rates: data.rates }));
+      return data.rates;
+    }
+  } catch (e) {
+    console.warn('Could not load exchange rates:', e);
+  }
+  return cached && cached.rates ? cached.rates : null; // stale rates beat none
+}
+
+async function initCurrency() {
+  const user = JSON.parse(localStorage.getItem('userData') || '{}');
+  const code = extractCurrencyCode(user.currency);
+  fxCurrency = 'USD';
+  fxRate = 1;
+  if (code !== 'USD') {
+    const rates = await loadUsdRates();
+    if (rates && rates[code]) {
+      fxCurrency = code;
+      fxRate = Number(rates[code]);
+    } else {
+      console.warn(`No exchange rate for ${code}; showing USD instead`);
+    }
+  }
+  // static labels in index.html modals
+  document.querySelectorAll('[data-currency-label]').forEach(el => {
+    el.textContent = `${el.dataset.currencyLabel} (${currencySymbol()})`;
+  });
+}
+
+const round2 = n => Math.round(n * 100) / 100;
+function toLocal(usd) { return parseAmount(usd) * fxRate; }
+function toUSD(local) { return round2(parseAmount(local) / fxRate); }
+
+function formatLocal(localAmount) {
+  const n = parseAmount(localAmount);
+  try {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency: fxCurrency, currencyDisplay: 'narrowSymbol' }).format(n);
+  } catch (e) {
+    return `${fxCurrency} ${n.toFixed(2)}`;
+  }
+}
+// Format a stored USD amount in the user's currency
+function money(usd) { return formatLocal(toLocal(usd)); }
+
+function currencySymbol() {
+  try {
+    const part = new Intl.NumberFormat(undefined, { style: 'currency', currency: fxCurrency, currencyDisplay: 'narrowSymbol' })
+      .formatToParts(0).find(p => p.type === 'currency');
+    return part ? part.value : fxCurrency;
+  } catch (e) {
+    return fxCurrency;
+  }
+}
+
 // Initialize user data structure — requires a logged-in user (set by login.html)
 function initUserData() {
   const existingUser = localStorage.getItem('userData');
@@ -332,9 +434,9 @@ async function purchaseInvestmentPlan(planId, amount) {
   const plan = plans.find(p => p.id === planId);
 
   if (!plan) return { success: false, error: 'Plan not found' };
-  if (amount < plan.minInvestment) return { success: false, error: `Minimum investment is $${plan.minInvestment}` };
-  if (amount > plan.maxInvestment) return { success: false, error: `Maximum investment is $${plan.maxInvestment}` };
-  if (user.balance < amount) return { success: false, error: 'Insufficient balance' };
+  if (amount < plan.minInvestment) return { success: false, error: `Minimum investment is ${money(plan.minInvestment)}` };
+  if (amount > plan.maxInvestment) return { success: false, error: `Maximum investment is ${money(plan.maxInvestment)}` };
+  if (parseAmount(user.balance) < amount) return { success: false, error: 'Insufficient balance' };
 
   const now = Date.now();
   const startDate = new Date(now).toISOString();
@@ -684,7 +786,7 @@ async function renderProfitHistoryPage() {
   const totalAdded   = history.filter(e => e.type === "add").reduce((s, e) => s + Number(e.amount || 0), 0);
   const totalDeducted = history.filter(e => e.type === "deduct").reduce((s, e) => s + Number(e.amount || 0), 0);
 
-  const fmt = n => "$" + Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmt = n => money(n);
 
   const rowsHtml = history.length === 0
     ? `<tr><td colspan="5" style="text-align:center;padding:2rem;color:hsl(var(--muted-foreground));">No profit adjustments yet.</td></tr>`
@@ -788,11 +890,11 @@ function renderDashboardPage() {
     <div class="stats-grid">
       <div class="card stat-card">
         <div class="stat-label">Total Balance</div>
-        <div class="stat-value">$${user.balance.toFixed(2)}</div>
+        <div class="stat-value">${money(user.balance)}</div>
       </div>
       <div class="card stat-card">
         <div class="stat-label">Total Profit</div>
-        <div class="stat-value" style="color: hsl(var(--chart-2));">$${user.profit.toFixed(2)}</div>
+        <div class="stat-value" style="color: hsl(var(--chart-2));">${money(user.profit)}</div>
       </div>
       <div class="card stat-card">
         <div class="stat-label">Active Trades</div>
@@ -800,7 +902,7 @@ function renderDashboardPage() {
       </div>
       <div class="card stat-card">
         <div class="stat-label">Referral Bonus</div>
-        <div class="stat-value">$${parseFloat(user.referalBonus || 0).toFixed(2)}</div>
+        <div class="stat-value">${money(user.referalBonus)}</div>
       </div>
     </div>
 
@@ -926,7 +1028,7 @@ function loadTradingViewWidget2(containerId, symbol) {
       <div class="trade-container">
         <div class="trading-card">
           <div class="header">
-            <div class="balance">Balance: $<span id="balance2">${user.balance.toFixed(2)}</span></div>
+            <div class="balance">Balance: <span id="balance2">${money(user.balance)}</span></div>
             <div class="live">LIVE TRADING</div>
           </div>
 
@@ -966,7 +1068,7 @@ function loadTradingViewWidget2(containerId, symbol) {
             </select>
 
             <label>Amount</label>
-            <input type="number" id="amount" placeholder="Enter trade amount" required>
+            <input type="text" inputmode="decimal" id="amount" placeholder="Enter trade amount (${currencySymbol()})" required>
 
             <div class="tp-sl">
               <div>
@@ -1120,7 +1222,7 @@ function loadTradingViewWidget2(containerId, symbol) {
         dataType: "json",
         timeout: 30000
       });
-      $("#balance2").text(data.data.balance);
+      $("#balance2").text(money(data.data.balance));
       return data.data;
     } catch (err) {
       console.error(err);
@@ -1159,7 +1261,7 @@ function loadTradingViewWidget2(containerId, symbol) {
       Swal.fire({
         icon: 'success',
         title: `Trade Placed!`,
-        text: `${trade.assetName} | $${trade.amount} @ ${trade.leverage}`,
+        text: `${trade.assetName} | ${money(trade.amount)} @ ${trade.leverage}`,
         confirmButtonColor: '#f0b90b'
       });
       setTimeout(() => renderTradeHistoryPage(), 2000);
@@ -1175,7 +1277,7 @@ function loadTradingViewWidget2(containerId, symbol) {
       assetName: assetNameEl.value,
       leverage: leverageRangeEl.value + "x",
       duration: document.getElementById("duration").value,
-      amount: document.getElementById("amount").value,
+      amount: toUSD(document.getElementById("amount").value),
       takeProfit: document.getElementById("takeProfit").value,
       stopLoss: document.getElementById("stopLoss").value,
       action
@@ -1450,10 +1552,10 @@ function renderTradeHistoryPage() {
     const profit=Number(trade.profit||0);
     const amount=Number(trade.tradeAmount||0);
     if(profit>0){
-      profitLossEl.textContent=`+$${profit}`; profitLossEl.className="won";
+      profitLossEl.textContent=`+${money(profit)}`; profitLossEl.className="won";
       actionEl.textContent="Won"; actionEl.className="won";
     } else{
-      profitLossEl.textContent=`-$${amount}`; profitLossEl.className="lost";
+      profitLossEl.textContent=`-${money(amount)}`; profitLossEl.className="lost";
       actionEl.textContent="Lost"; actionEl.className="lost";
     }
     statusEl.textContent="COMPLETED";
@@ -1468,7 +1570,7 @@ function renderTradeHistoryPage() {
       const row=document.createElement("tr");
       row.innerHTML=`
         <td>${trade.assetName??"-"}</td>
-        <td>$${Number(trade.tradeAmount||0)}</td>
+        <td>${money(trade.tradeAmount)}</td>
         <td>${trade.leverage??"-"}</td>
         <td>${trade.duration??"-"}</td>
         <td id="countdown-${id}">--:--:--</td>
@@ -1529,7 +1631,7 @@ function renderTradeHistoryPage() {
     // Update summary widget
     const totalTrades=trades.length;
     const totalProfit=trades.reduce((sum,t)=>sum+Number(t.profit||0),0);
-    summaryWidget.textContent=`Total Trades: ${totalTrades} | Total Profit/Loss: $${totalProfit.toFixed(2)}`;
+    summaryWidget.textContent=`Total Trades: ${totalTrades} | Total Profit/Loss: ${money(totalProfit)}`;
 
     // Generate charts
     // generateCharts(trades);
@@ -1568,7 +1670,7 @@ function renderTradeHistoryPage() {
 
 async function handlePurchasePlan(planId) {
   const amountInput = document.getElementById(`amount-${planId}`);
-  const amount = parseFloat(amountInput.value);
+  const amount = toUSD(amountInput.value);
 
   if (!amount || amount <= 0) {
     Swal.fire({ icon: 'warning', title: 'Invalid Amount', text: 'Please enter a valid investment amount', confirmButtonText: 'OK' });
@@ -2151,7 +2253,7 @@ function renderFundAccountPage() {
   const html = `
     <div class="hero-banner">
   <h1 class="hero-title">Fund Account 💰</h1>
-  <p style="font-size: 1rem; opacity: 0.9;">Current Balance: $${user.balance.toFixed(2)}</p>
+  <p style="font-size: 1rem; opacity: 0.9;">Current Balance: ${money(user.balance)}</p>
 </div>
 
 <div class="card" style="max-width: 42rem;">
@@ -2159,7 +2261,7 @@ function renderFundAccountPage() {
 
   <!-- 👇 Wallet Display Area -->
   <div id="walletDisplay" style="display: none; text-align: center; margin-bottom: 1.5rem;">
-    <img id="walletQr" src="" alt="Wallet QR" style="width: 140px; height: 140px; margin-bottom: 1rem; border-radius: 8px; border: 1px solid #eee;">
+    <div id="walletQr" aria-label="Wallet QR" style="display: inline-block; width: 140px; height: 140px; padding: 6px; background: #fff; margin-bottom: 1rem; border-radius: 8px; border: 1px solid #eee;"></div>
     <p style="font-size: 0.95rem; word-break: break-all; margin: 0 0 0.75rem 0;">
       <strong id="walletLabel"></strong>: 
       <span id="walletAddress"></span>
@@ -2207,24 +2309,20 @@ function renderFundAccountPage() {
       <label for="depositWallet">Deposit Channel</label>
       <select id="depositWallet" class="input" required>
         <option value="">Select a Wallet</option>
-        <option value="bitcoin">Bitcoin</option>
-        <option value="ethereum">Ethereum</option>
-        <option value="solana">Solana</option>
-        <option value="usdt">USDT (TRC20)</option>
-        <option value="usdt2">USDT (ERC20)</option>
-        <option value="litecoin">LTC</option>
-       
       </select>
+      <p id="depositChannelsNote" class="text-muted small" style="margin: 0.4rem 0 0;">Loading deposit channels…</p>
     </div>
 
     <div class="form-group">
-      <label for="depositAmount">Amount ($)</label>
-      <input type="number" id="depositAmount" class="input" placeholder="Enter Amount ($)" step="0.01" min="10" required>
+      <label for="depositAmount">Amount (${currencySymbol()})</label>
+      <input type="text" inputmode="decimal" id="depositAmount" class="input" placeholder="Enter Amount (${currencySymbol()})" required>
     </div>
 
     <button type="submit" class="btn btn-primary btn-block">Submit Deposit Request</button>
   </form>
 </div>
+
+${renderDepositHistory(user)}
 
 <div style="text-align: center; margin-top: 2rem; padding-top: 2rem; border-top: 1px solid hsl(var(--border));">
   <p class="text-muted small">COPYRIGHT ©2025 vantagestonk, All rights Reserved</p>
@@ -2240,16 +2338,51 @@ function renderFundAccountPage() {
   const walletAddress = document.getElementById("walletAddress");
   const walletQr = document.getElementById("walletQr");
 
-  // Replace with actual addresses from user object
- const wallets = {
-    bitcoin: { label: "Bitcoin", address: "bc1q70hx8f5rzlv7g9man8gat77kup5v0s8ennvqaq", qr: "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=bc1q70hx8f5rzlv7g9man8gat77kup5v0s8ennvqaq" },
-    ethereum: { label: "Ethereum", address: "0xbe085b0F1F7cd38EEC8D804f40Bfd1703F380C51", qr: "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=0xbe085b0F1F7cd38EEC8D804f40Bfd1703F380C51" },
-    usdt: { label: "USDT (TRC20)", address: "TYcK8LbaAZYbn2n3o7MfJjkxFgEAZfGXPC", qr: "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=TYcK8LbaAZYbn2n3o7MfJjkxFgEAZfGXPC" },
-     usdt2: { label: "USDT (ERC20)", address: "0xbe085b0F1F7cd38EEC8D804f40Bfd1703F380C51", qr: "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=0xbe085b0F1F7cd38EEC8D804f40Bfd1703F380C51" },
-  
+  // Crypto deposit channels come only from the admin-managed list on the
+  // server (GET /settings/wallets) — nothing is hardcoded here.
+  const wallets = new Map();
+  const depositChannelsNote = document.getElementById("depositChannelsNote");
 
-    solana: { label: "SOL", address: "CYAn5Le2dRBvSFVVxuPr527jbKLZb96k82kUWh9ZQ77d", qr: "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=CYAn5Le2dRBvSFVVxuPr527jbKLZb96k82kUWh9ZQ77d" },
-  };
+  // Insert before Wire/Demo so crypto channels stay first whichever loads first.
+  function insertDepositOption(select, opt) {
+    const anchor = select.querySelector('option[value="wire"], option[value="demo"]');
+    select.insertBefore(opt, anchor);
+  }
+
+  $.ajax({
+    type: "GET",
+    url: "https://vantage-render.onrender.com/settings/wallets",
+    dataType: "json",
+    cache: false,
+    timeout: 30000
+  }).then(res => {
+    const select = document.getElementById("depositWallet");
+    const list = res && Array.isArray(res.data) ? res.data : [];
+    list.forEach(w => {
+      if (!w || typeof w.key !== "string" || typeof w.address !== "string" || wallets.has(w.key)) return;
+      wallets.set(w.key, Object.freeze({ label: String(w.label || w.key), address: w.address }));
+      const opt = document.createElement("option");
+      opt.value = w.key;
+      opt.textContent = String(w.label || w.key);
+      insertDepositOption(select, opt);
+    });
+    if (depositChannelsNote) {
+      depositChannelsNote.textContent = wallets.size ? "" : "No crypto deposit channels are available right now. Please contact support.";
+      depositChannelsNote.style.display = wallets.size ? "none" : "block";
+    }
+  }).catch(err => {
+    console.error("Error loading deposit wallets:", err);
+    if (depositChannelsNote) depositChannelsNote.textContent = "Crypto deposit channels are temporarily unavailable. Please try again later or contact support.";
+  });
+
+  function renderWalletQr(address) {
+    walletQr.innerHTML = "";
+    if (typeof QRCode === "function") {
+      new QRCode(walletQr, { text: address, width: 128, height: 128, correctLevel: QRCode.CorrectLevel.M });
+    } else {
+      walletQr.style.display = "none"; // library failed to load — address + copy button still work
+    }
+  }
 
 
   // Demo deposit method — only offered when an admin has switched it on.
@@ -2328,11 +2461,12 @@ function renderFundAccountPage() {
       showDemoMessage();
       return;
     }
-    if (wallets[value] && wallets[value].address) {
+    const w = wallets.get(value);
+    if (w) {
       walletDisplay.style.display = "block";
-      walletLabel.textContent = wallets[value].label;
-      walletAddress.textContent = wallets[value].address;
-      walletQr.src = wallets[value].qr;
+      walletLabel.textContent = w.label;
+      walletAddress.textContent = w.address;
+      renderWalletQr(w.address);
     } else {
       walletDisplay.style.display = "none";
     }
@@ -2340,7 +2474,7 @@ function renderFundAccountPage() {
   document.getElementById('depositForm').addEventListener('submit', (e) => {
     e.preventDefault();
     const wallet = document.getElementById('depositWallet').value;
-    const amount = parseFloat(document.getElementById('depositAmount').value);
+    const amount = toUSD(document.getElementById('depositAmount').value);
 
     // Demo never creates a real deposit request — just show the message again.
     if (wallet === 'demo') {
@@ -2348,11 +2482,16 @@ function renderFundAccountPage() {
       return;
     }
 
-    if (amount < 10) {
-      Swal.fire({ icon: 'warning', title: 'Invalid Amount', text: 'Minimum deposit amount is $10', confirmButtonText: 'OK' });
+    if (wallet !== 'wire' && !wallets.has(wallet)) {
+      Swal.fire({ icon: 'warning', title: 'Select a Deposit Channel', text: 'Please choose one of the available deposit channels.', confirmButtonText: 'OK' });
       return;
     }
-    
+
+    if (amount < 10) {
+      Swal.fire({ icon: 'warning', title: 'Invalid Amount', text: `Minimum deposit amount is ${money(10)}`, confirmButtonText: 'OK' });
+      return;
+    }
+
     addTransaction({
       type: 'deposit',
       method: wallet,
@@ -2368,6 +2507,7 @@ function renderFundAccountPage() {
     // });
     e.target.reset();
     wireDisplay.style.display = "none";
+    walletDisplay.style.display = "none";
   });
 }
 
@@ -2417,11 +2557,11 @@ function renderProfilePage() {
         </div>
         <div>
           <div class="stat-label">Balance</div>
-          <div style="font-size: 1.5rem; font-weight: 700;">$${user.balance.toFixed(2)}</div>
+          <div style="font-size: 1.5rem; font-weight: 700;">${money(user.balance)}</div>
         </div>
         <div>
           <div class="stat-label">Total Profit</div>
-          <div style="font-size: 1.5rem; font-weight: 700; color: hsl(var(--chart-2));">$${user.profit.toFixed(2)}</div>
+          <div style="font-size: 1.5rem; font-weight: 700; color: hsl(var(--chart-2));">${money(user.profit)}</div>
         </div>
        
       </div>
@@ -2430,6 +2570,7 @@ function renderProfilePage() {
         <button class="btn" style="background-color: transparent; border: 1px solid hsl(var(--border)); color: hsl(var(--foreground));" onclick="handleUpdateKYC()">Update KYC</button>
       </div>
      <button class="btn" style="background-color: transparent;margin-top:10px;  border: 1px solid hsl(var(--border)); color: hsl(var(--foreground));" onclick="handleChangePassword()">Change Password</button>
+     <button class="btn" style="background-color: transparent;margin-top:10px;  border: 1px solid hsl(var(--destructive)); color: hsl(var(--destructive));" onclick="logoutUser()">Log Out</button>
 
     </div>
   `;
@@ -2725,19 +2866,17 @@ function renderInvestmentPage() {
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1rem;margin-bottom:1rem;">
             <div>
               <div class="text-muted small">Invested Amount</div>
-              <div style="font-weight:600;margin-top:0.25rem;">$${inv.amount.toFixed(2)}</div>
+              <div style="font-weight:600;margin-top:0.25rem;">${money(inv.amount)}</div>
             </div>
             <div>
               <div class="text-muted small">Daily Profit</div>
-              <div style="font-weight:600;color:hsl(var(--chart-2));margin-top:0.25rem;">$${dailyProfit.toFixed(2)} (${(
+              <div style="font-weight:600;color:hsl(var(--chart-2));margin-top:0.25rem;">${money(dailyProfit)} (${(
               inv.dailyProfitRate * 100
             ).toFixed(2)}%)</div>
             </div>
             <div>
               <div class="text-muted small">Total Earned</div>
-              <div style="font-weight:600;color:hsl(var(--chart-2));margin-top:0.25rem;">$${inv.totalProfit.toFixed(
-                2
-              )}</div>
+              <div style="font-weight:600;color:hsl(var(--chart-2));margin-top:0.25rem;">${money(inv.totalProfit)}</div>
             </div>
             <div>
               <div class="text-muted small">Days Remaining</div>
@@ -2777,7 +2916,7 @@ function renderInvestmentPage() {
               d => `
               <tr>
                 <td>${new Date(d.timestamp).toLocaleDateString()}</td>
-                <td>$${d.amount}</td>
+                <td>${money(d.amount)}</td>
                 <td>${d.method}</td>
                 <td><span class="badge" style="background:${
                   d.status === "Approved"
@@ -2807,7 +2946,7 @@ function renderInvestmentPage() {
               w => `
               <tr>
                 <td>${new Date(w.timestamp).toLocaleDateString()}</td>
-                <td>$${w.amount}</td>
+                <td>${money(w.amount)}</td>
                 <td>${w.method}</td>
                 <td><span class="badge" style="background:${
                   w.status === "Approved"
@@ -2829,23 +2968,20 @@ function renderInvestmentPage() {
     </div>
 
     <div class="stats-grid" style="margin-bottom:1.5rem;">
-      <div class="card stat-card"><div class="stat-label">Total Balance</div><div class="stat-value">$${user.balance.toFixed(
-        2
-      )}</div></div>
+      <div class="card stat-card"><div class="stat-label">Total Balance</div><div class="stat-value">${money(user.balance)}</div></div>
       <div class="card stat-card"><div class="stat-label">Active Investments</div><div class="stat-value">${plan.length}</div></div>
       <div class="card stat-card">
   <div class="stat-label">Investment Profit</div>
   <div class="stat-value" style="color:hsl(var(--chart-2));">
-    $${plan
+    ${money(plan
       .filter(inv => inv.status === "active")
-      .reduce((sum, inv) => sum + (inv.totalProfit || 0), 0)
-      .toFixed(2)}
+      .reduce((sum, inv) => sum + parseAmount(inv.totalProfit), 0))}
   </div>
 </div>
 
       <div class="card stat-card"><div class="stat-label">Total P&L</div><div class="stat-value" style="color:${
         totalPnL >= 0 ? "hsl(var(--chart-2))" : "hsl(var(--destructive))"
-      };">${totalPnL >= 0 ? "+" : ""}$${totalPnL.toFixed(2)}</div></div>
+      };">${totalPnL >= 0 ? "+" : ""}${money(totalPnL)}</div></div>
     </div>
 
     ${plan.length > 0 ? `<h2 style="font-size:1.125rem;font-weight:600;margin-bottom:1rem;">Active Investment Plans</h2>${investmentsHTML}` : investmentsHTML}
@@ -2871,8 +3007,8 @@ function renderInvestmentPage() {
                     <tr>
                       <td>${new Date(t.timestamp).toLocaleDateString()}</td>
                       <td>${t.planName}</td>
-                      <td>$${t.amount}</td>
-                      <td>$${t.totalProfit}</td>
+                      <td>${money(t.amount)}</td>
+                      <td>${money(t.totalProfit)}</td>
                       <td><span class="badge" style="${
                         t.status === "active" || t.status === "completed"
                           ? "background-color:hsl(var(--chart-2));color:white;"
@@ -2893,6 +3029,7 @@ function renderInvestmentPage() {
     <style>
       .tab-btn {
         background: none;
+        color: hsl(var(--foreground));
         border: 1px solid hsl(var(--border));
         padding: 0.5rem 1rem;
         border-radius: 6px;
@@ -2965,11 +3102,11 @@ function renderInvestmentPlansPage() {
         <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin-bottom: 1.5rem; padding: 1rem; background-color: hsl(var(--muted)); border-radius: 0.375rem;">
           <div>
             <div class="text-muted small">Min Investment</div>
-            <div style="font-weight: 600; margin-top: 0.25rem;">$${plan.minInvestment.toLocaleString()}</div>
+            <div style="font-weight: 600; margin-top: 0.25rem;">${money(plan.minInvestment)}</div>
           </div>
           <div>
             <div class="text-muted small">Max Investment</div>
-            <div style="font-weight: 600; margin-top: 0.25rem;">${plan.maxInvestment.toLocaleString()}</div>
+            <div style="font-weight: 600; margin-top: 0.25rem;">${typeof plan.maxInvestment === "number" ? money(plan.maxInvestment) : plan.maxInvestment}</div>
           </div>
           <div>
             <div class="text-muted small">Daily Profit</div>
@@ -2985,12 +3122,12 @@ function renderInvestmentPlansPage() {
           </div>
           <div>
             <div class="text-muted small">Your Balance</div>
-            <div style="font-weight: 600; margin-top: 0.25rem;">$${user.balance.toFixed(2)}</div>
+            <div style="font-weight: 600; margin-top: 0.25rem;">${money(user.balance)}</div>
           </div>
         </div>
         
         <div style="display: flex; gap: 0.75rem;">
-          <input type="number" id="amount-${plan.id}" class="input" placeholder="Enter amount" min="${plan.minInvestment}" max="${plan.maxInvestment}" style="flex: 1;">
+          <input type="text" inputmode="decimal" id="amount-${plan.id}" class="input" placeholder="Enter amount (${currencySymbol()})" style="flex: 1;">
           <button class="btn btn-primary" onclick="handlePurchasePlan('${plan.id}')" style="white-space: nowrap;">Invest Now</button>
         </div>
       </div>
@@ -3006,7 +3143,7 @@ function renderInvestmentPlansPage() {
     <div class="stats-grid" style="margin-bottom: 1.5rem;">
       <div class="card stat-card">
         <div class="stat-label">Current Balance</div>
-        <div class="stat-value">$${user.balance.toFixed(2)}</div>
+        <div class="stat-value">${money(user.balance)}</div>
       </div>
       <div class="card stat-card">
         <div class="stat-label">Active Investments</div>
@@ -3014,21 +3151,20 @@ function renderInvestmentPlansPage() {
       </div>
       <div class="card stat-card">
         <div class="stat-label">Total Invested</div>
-        <div class="stat-value">$${user.plan.filter(inv => inv.status === 'active').reduce((sum, inv) => sum + inv.amount, 0).toFixed(2)}</div>
+        <div class="stat-value">${money(user.plan.filter(inv => inv.status === 'active').reduce((sum, inv) => sum + parseAmount(inv.amount), 0))}</div>
       </div>
       <div class="card stat-card">
   <div class="stat-label">Active Earnings</div>
   <div class="stat-value" style="color: hsl(var(--chart-2));">
-    $${user.plan
+    ${money(user.plan
       .filter(inv => inv.status === "active")
-      .reduce((sum, inv) => sum + (inv.totalProfit || 0), 0)
-      .toFixed(2)}
+      .reduce((sum, inv) => sum + parseAmount(inv.totalProfit), 0))}
   </div>
 </div>
 
       <div class="card stat-card">
         <div class="stat-label">Total Earnings</div>
-        <div class="stat-value" style="color: hsl(var(--chart-2));">$${user.plan.reduce((sum, inv) => sum + inv.totalProfit, 0).toFixed(2)}</div>
+        <div class="stat-value" style="color: hsl(var(--chart-2));">${money(user.plan.reduce((sum, inv) => sum + parseAmount(inv.totalProfit), 0))}</div>
       </div>
     </div>
     
@@ -3044,16 +3180,16 @@ async function handleWithdrawal() {
   const user = getUserData();
   const type = document.getElementById('withdrawalType').value;
   const method = document.getElementById('withdrawalWallet').value;
-  const amount = parseFloat(document.getElementById('withdrawalAmount').value);
+  const amount = toUSD(document.getElementById('withdrawalAmount').value);
   const address = document.getElementById('withdrawalAddress').value;
 
   // 🟢 Basic validation
   if (!type) return Swal.fire({ icon: 'warning', title: 'Missing Type', text: 'Select a withdrawal wallet.' });
   if (!method) return Swal.fire({ icon: 'warning', title: 'Missing Method', text: 'Select a withdrawal method.' });
-  if (amount < 10) return Swal.fire({ icon: 'warning', title: 'Invalid Amount', text: 'Minimum withdrawal is $10.' });
+  if (amount < 10) return Swal.fire({ icon: 'warning', title: 'Invalid Amount', text: `Minimum withdrawal is ${money(10)}.` });
 
   // 🟠 Choose the correct wallet dynamically
-  const available = type === 'Balance' ? user.balance : user.profit;
+  const available = parseAmount(type === 'Balance' ? user.balance : user.profit);
 
   if (amount > available) {
     Swal.fire({
@@ -3082,36 +3218,45 @@ async function handleWithdrawal() {
   Swal.fire({
     icon: 'success',
     title: 'Withdrawal Submitted!',
-    html: `<strong>Type:</strong> ${type}<br><strong>Method:</strong> ${method}<br><strong>Amount:</strong> $${amount.toFixed(2)}<br><strong>Address:</strong> ${address}`,
+    html: `<strong>Type:</strong> ${type}<br><strong>Method:</strong> ${method}<br><strong>Amount:</strong> ${money(amount)}<br><strong>Address:</strong> ${address}`,
   });
 
   renderWithdrawalPage();
 }
-function renderWithdrawalHistory(user) {
-  if (!user.withdrawals.length) return '';
-
+// Shared history table for deposits (user.transactions) and withdrawals
+function renderMoneyHistory(title, items, emptyText) {
+  const list = Array.isArray(items) ? items : [];
   return `
-    <div class="card" style="margin-top: 2rem;">
-      <h2 style="font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem;">Withdrawal History</h2>
+    <div class="card" style="margin-top: 2rem; max-width: 42rem;">
+      <h2 style="font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem;">${title}</h2>
+      ${list.length ? `
       <div class="table-container">
         <table>
           <thead>
             <tr><th>Date</th><th>Method</th><th>Amount</th><th>Status</th></tr>
           </thead>
           <tbody>
-            ${user.withdrawals.slice().reverse().map(w => `
+            ${list.slice().reverse().map(item => `
               <tr>
-                <td>${new Date(w.timestamp).toLocaleDateString()}</td>
-                <td>${w.method}</td>
-                <td>$${w.amount.toFixed(2)}</td>
-                <td><span class="badge">${w.status}</span></td>
+                <td>${new Date(item.timestamp).toLocaleDateString()}</td>
+                <td>${item.method || '—'}</td>
+                <td>${money(item.amount)}</td>
+                <td><span class="badge">${item.status || '—'}</span></td>
               </tr>
             `).join('')}
           </tbody>
         </table>
-      </div>
+      </div>` : `<p class="text-muted" style="text-align: center; padding: 1.5rem 0;">${emptyText}</p>`}
     </div>
   `;
+}
+
+function renderDepositHistory(user) {
+  return renderMoneyHistory('Deposit History', user.transactions, 'No deposits yet.');
+}
+
+function renderWithdrawalHistory(user) {
+  return renderMoneyHistory('Withdrawal History', user.withdrawals, 'No withdrawals yet.');
 }
 
 function renderWithdrawalPage() {
@@ -3122,7 +3267,7 @@ function renderWithdrawalPage() {
       <h1 style="font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem;">Withdrawal</h1>
       <p class="text-muted">
         Request a withdrawal from your account 
-        (Balance: $${user.balance.toFixed(2)} | Profit: $${user.profit.toFixed(2)})
+        (Balance: ${money(user.balance)} | Profit: ${money(user.profit)})
       </p>
     </div>
 
@@ -3150,8 +3295,8 @@ function renderWithdrawalPage() {
         </div>
 
         <div class="form-group">
-          <label for="withdrawalAmount">Amount ($)</label>
-          <input type="number" id="withdrawalAmount" class="input" placeholder="Enter Amount ($)" step="0.01" min="10" required>
+          <label for="withdrawalAmount">Amount (${currencySymbol()})</label>
+          <input type="text" inputmode="decimal" id="withdrawalAmount" class="input" placeholder="Enter Amount (${currencySymbol()})" required>
         </div>
 
         <div class="form-group">
@@ -3201,7 +3346,7 @@ function renderReferralsPage() {
       </div>
       <div class="card stat-card">
         <div class="stat-label">Total Earned</div>
-        <div class="stat-value" style="color: hsl(var(--chart-2));">$${totalEarned.toFixed(2)}</div>
+        <div class="stat-value" style="color: hsl(var(--chart-2));">${money(totalEarned)}</div>
       </div>
     </div>
     
@@ -3241,7 +3386,7 @@ function renderReferralsPage() {
                   <td>
                     <span class="badge" style="${ref.status === 'active' ? 'background-color: hsl(var(--chart-2)); color: white;' : ''}">${ref.status}</span>
                   </td>
-                  <td style="font-weight: 600; color: ${ref.earned > 0 ? 'hsl(var(--chart-2))' : 'inherit'};">$${ref.earned.toFixed(2)}</td>
+                  <td style="font-weight: 600; color: ${ref.earned > 0 ? 'hsl(var(--chart-2))' : 'inherit'};">${money(ref.earned)}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -3272,15 +3417,15 @@ function renderRewardsPage() {
     <div class="stats-grid">
       <div class="card stat-card">
         <div class="stat-label">Total Claimed</div>
-        <div class="stat-value" style="color: hsl(var(--chart-2));">$${totalClaimed.toFixed(2)}</div>
+        <div class="stat-value" style="color: hsl(var(--chart-2));">${money(totalClaimed)}</div>
       </div>
       <div class="card stat-card">
         <div class="stat-label">Available Rewards</div>
-        <div class="stat-value">$${totalAvailable.toFixed(2)}</div>
+        <div class="stat-value">${money(totalAvailable)}</div>
       </div>
       <div class="card stat-card">
         <div class="stat-label">Total Value</div>
-        <div class="stat-value">$${(totalClaimed + totalAvailable).toFixed(2)}</div>
+        <div class="stat-value">${money(totalClaimed + totalAvailable)}</div>
       </div>
     </div>
     
@@ -3295,7 +3440,7 @@ function renderRewardsPage() {
             <p>${reward.description}</p>
           </div>
           <div style="text-align: right;">
-            <div class="reward-amount">$${reward.amount.toFixed(2)}</div>
+            <div class="reward-amount">${money(reward.amount)}</div>
             ${reward.claimed 
               ? '<span class="badge">Claimed</span>' 
               : `<button class="btn btn-primary" style="margin-top: 0.5rem; padding: 0.375rem 0.75rem; font-size: 0.75rem;" onclick="handleClaimReward('${reward.id}', '${reward.title}', ${reward.amount})">Claim</button>`
@@ -3335,7 +3480,7 @@ function handleClaimReward(rewardId, title, amount) {
     Swal.fire({ 
       icon: 'success', 
       title: 'Reward Claimed!', 
-      html: `<strong>${title}</strong><br>$${amount.toFixed(2)}<br><br>Your new balance has been updated!`,
+      html: `<strong>${title}</strong><br>${money(amount)}<br><br>Your new balance has been updated!`,
       confirmButtonText: 'OK' 
     }).then(() => {
       renderRewardsPage();
@@ -3454,7 +3599,7 @@ function openTradeModal(symbol, type, price) {
   
   const tradeData = { symbol, type, price };
   document.getElementById('placeTrade').onclick = () => {
-    const amount = parseFloat(document.getElementById('tradeAmount').value);
+    const amount = toUSD(document.getElementById('tradeAmount').value);
     if (amount) {
       addTransaction({
         type: 'trade',
@@ -3468,7 +3613,7 @@ function openTradeModal(symbol, type, price) {
       Swal.fire({ 
         icon: 'success', 
         title: 'Order Placed!', 
-        html: `<strong>${type} ${symbol}</strong><br>Amount: $${amount.toFixed(2)}<br>Price: ${price}`,
+        html: `<strong>${type} ${symbol}</strong><br>Amount: ${money(amount)}<br>Price: ${price}`,
         confirmButtonText: 'OK' 
       });
       modal.classList.remove('active');
@@ -3556,7 +3701,7 @@ function openCopyTradeModal(btn) {
   // Copy Trade start button logic
  // Copy Trade start button logic
 document.getElementById("startCopyTrade").onclick = async () => {
-  const amount = parseFloat(document.getElementById("copyAmount").value);
+  const amount = toUSD(document.getElementById("copyAmount").value);
   const duration = parseInt(document.getElementById("copyDuration").value);
 
   if (!amount || !duration) {
@@ -3572,11 +3717,11 @@ document.getElementById("startCopyTrade").onclick = async () => {
   const traderName = trader.name; // variable passed from openCopyTradeModal()
 
   // Check if user has enough balance
-  if (user.balance < amount) {
+  if (parseAmount(user.balance) < amount) {
     Swal.fire({
       icon: "error",
       title: "Insufficient Balance",
-      text: `You only have ${user.balance} available, which is not enough for this trade.`,
+      text: `You only have ${money(user.balance)} available, which is not enough for this trade.`,
     });
     return;
   }
@@ -3602,7 +3747,7 @@ document.getElementById("startCopyTrade").onclick = async () => {
         title: "Copy Trade Started!",
         html: `
           <strong>Trader:</strong> ${traderName}<br>
-          <strong>Amount:</strong> $${amount.toFixed(2)}<br>
+          <strong>Amount:</strong> ${money(amount)}<br>
           <strong>Duration:</strong> ${duration} days
         `,
       });
@@ -3701,7 +3846,7 @@ container.innerHTML = ""; // clears previous content
 
     // Amount
     const tdAmount = document.createElement("td");
-    tdAmount.textContent = trade.amount ?? "-";
+    tdAmount.textContent = trade.amount != null ? money(trade.amount) : "-";
     tdAmount.style.padding = "10px 8px";
     tdAmount.style.color = "hsl(var(--accent))";
     tr.appendChild(tdAmount);
@@ -3751,16 +3896,34 @@ container.innerHTML = ""; // clears previous content
 }
 
 
+// ==================== LOGOUT ====================
+async function logoutUser() {
+  const result = await Swal.fire({
+    icon: 'question',
+    title: 'Log out?',
+    text: 'You will need to sign in again to access your account.',
+    showCancelButton: true,
+    confirmButtonText: 'Log Out',
+    cancelButtonText: 'Cancel',
+    confirmButtonColor: '#dc2626'
+  });
+  if (!result.isConfirmed) return;
+
+  ['userData', 'kycStatus', 'imgUrl', 'apiLogs', 'investmentPlans'].forEach(k => localStorage.removeItem(k));
+  window.location.href = './login.html';
+}
+
 // ==================== INITIALIZATION ====================
 
 // Initialize on DOM ready
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     localStorage.removeItem('investmentPlans');
   if (!initUserData()) return;
+  await initCurrency();
   initTheme();
   updateSidebarUserInfo();
   const savedPage = decodeURIComponent(location.hash.slice(1));
-  loadPage(RESTORABLE_PAGES.includes(savedPage) ? savedPage : 'market');
+  loadPage(RESTORABLE_PAGES.includes(savedPage) ? savedPage : 'dashboard');
 });
 
 // Update sidebar with user info
@@ -3779,5 +3942,5 @@ function updateSidebarUserInfo() {
   
   // Update balance if element exists
   const balanceEl = document.getElementById('sidebarBalance');
-  if (balanceEl) balanceEl.textContent = `$${user.balance.toFixed(2)}`;
+  if (balanceEl) balanceEl.textContent = money(user.balance);
 }

@@ -14,6 +14,8 @@
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" integrity="sha512-v2CJ7UaYy4JwqLDIrZUI/4hqeoQieOmAZNXBeQyjo21dadnwR+8ZaIJVT8EE2iyI61OV8e6M8PP2/4hpQINQ/g==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Deposit-address QR codes are drawn locally, so addresses never go to a third-party QR service -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" integrity="sha512-CNgIRecGo7nphbeZ04Sc13ka07paqdeTu0WR1IM4kNcpmBAUSHSQX0FslNhTDadL4O5SAGapGt4FodqL8My0mA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.1/css/all.min.css" integrity="sha512-2SwdPD6INVrV/lHTZbO2nodKhrnDdJK9/kg2XD1r9uGqPo1cUbujc+IYdlYdEErWNu69gVcYgdxlmVmzTWnetw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 </head>
 <body>
@@ -1846,7 +1848,7 @@ html, body {
             <nav class="sidebar-nav">
                 <div class="nav-section">
                     <div class="nav-section-label">DASHBOARDS</div>
-                    <a href="#market" class="nav-link active" data-page="market">
+                    <a href="#market" class="nav-link" data-page="market">
                         <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
                         </svg>
@@ -1879,7 +1881,7 @@ html, body {
                         <span>Place Trade</span>
                         <span class="nav-emoji"></span>
                     </a>
-                    <a href="#dashboard" class="nav-link" data-page="dashboard">
+                    <a href="#dashboard" class="nav-link active" data-page="dashboard">
                         <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <rect x="3" y="3" width="7" height="7"></rect>
                             <rect x="14" y="3" width="7" height="7"></rect>
@@ -1960,7 +1962,36 @@ html, body {
                         <path d="M12 1v6m0 6v6m5.66-13.66l-4.24 4.24m-2.83 2.83l-4.24 4.24m13.66-1.42l-4.24-4.24m-2.83-2.83l-4.24-4.24"></path>
                     </svg>
                 </a>
+                <button type="button" class="logout-btn" onclick="logoutUser()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                        <polyline points="16 17 21 12 16 7"></polyline>
+                        <line x1="21" y1="12" x2="9" y2="12"></line>
+                    </svg>
+                    <span>Log Out</span>
+                </button>
             </div>
+            <style>
+                .logout-btn {
+                    display: flex;
+                    align-items: center;
+                    gap: 0.65rem;
+                    width: 100%;
+                    margin-top: 0.25rem;
+                    padding: 0.55rem 0.75rem;
+                    background: transparent;
+                    border: none;
+                    border-radius: 6px;
+                    color: hsl(var(--destructive));
+                    font-size: 0.85rem;
+                    font-weight: 500;
+                    font-family: inherit;
+                    cursor: pointer;
+                    transition: background-color 0.15s;
+                }
+                .logout-btn:hover { background-color: hsl(var(--destructive) / 0.1); }
+                .logout-btn svg { width: 1rem; height: 1rem; flex-shrink: 0; }
+            </style>
         </aside>
 
         <!-- Main Content -->
@@ -2330,8 +2361,8 @@ html, body {
                     <div class="trade-price" id="tradeModalPrice">1.16506</div>
                 </div>
                 <div class="form-group">
-                    <label for="tradeAmount">Amount ($)</label>
-                    <input type="number" id="tradeAmount" class="input" placeholder="Enter amount" step="0.01">
+                    <label for="tradeAmount" data-currency-label="Amount">Amount ($)</label>
+                    <input type="text" inputmode="decimal" id="tradeAmount" class="input" placeholder="Enter amount">
                 </div>
                 <button class="btn btn-primary btn-block" id="placeTrade">Place Order</button>
             </div>
@@ -2352,8 +2383,8 @@ html, body {
                     <p><span class="text-primary">Add money</span> to your account in order to Mirror Trades.</p>
                 </div>
                 <div class="form-group">
-                    <label for="copyAmount">Enter Amount</label>
-                    <input type="number" id="copyAmount" class="input" placeholder="Enter amount" step="0.01">
+                    <label for="copyAmount" data-currency-label="Enter Amount">Enter Amount</label>
+                    <input type="text" inputmode="decimal" id="copyAmount" class="input" placeholder="Enter amount">
                 </div>
                 <div class="form-group">
                     <label for="copyDuration">Select Elapse Day</label>

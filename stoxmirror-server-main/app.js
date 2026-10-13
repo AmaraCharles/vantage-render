@@ -25,6 +25,9 @@ const demoSettingsRouter = require("./routes/demoSettings");
 const app = express();
 const PORT = process.env.PORT || 8080;
 
+// Render sits one proxy hop in front of us — lets req.ip be the real client.
+app.set("trust proxy", 1);
+
 // Middleware
 app.use(logger("dev"));
 app.use(express.json());

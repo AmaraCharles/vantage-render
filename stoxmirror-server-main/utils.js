@@ -737,7 +737,38 @@ const sendAdminWithdrawalNotification = async ({ userName, userEmail, amount, me
 };
 
 
+// Security alert: sent on every change to the crypto deposit wallets so an
+// unexpected change is noticed even if the admin account was compromised.
+const sendWalletChangeAlert = async ({ adminEmail, ip, timestamp, before, after }) => {
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const list = (wallets) =>
+    wallets.length
+      ? wallets.map((w) => `${esc(w.label)} [${esc(w.network)}]${w.enabled ? "" : " (disabled)"}: <code>${esc(w.address)}</code>`).join("<br>")
+      : "<em>none</em>";
+
+  await resend.emails.send({
+    from: process.env.EMAIL_USER || "no-reply@vantagestonk.com",
+    to: SUPPORT_EMAIL,
+    subject: "SECURITY: Deposit wallet addresses changed",
+    html: emailLayout({
+      title: "Deposit Wallets Changed",
+      body: `
+        <h2>Deposit wallet addresses were changed</h2>
+        ${detailsTable([
+          ["Changed by", esc(adminEmail)],
+          ["IP address", esc(ip)],
+          ["Timestamp", esc(timestamp)],
+        ])}
+        <p><strong>Before:</strong><br>${list(before)}</p>
+        <p><strong>After:</strong><br>${list(after)}</p>
+        ${note("<strong>If you did not expect this change</strong>, disable the admin account above, change its password and restore the correct addresses immediately.", "warning")}
+      `,
+    }),
+  });
+};
+
 module.exports = {
+  sendWalletChangeAlert,
   hashPassword,
   userRegisteration,
   sendUserDepositEmail,
