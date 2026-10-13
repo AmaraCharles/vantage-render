@@ -141,16 +141,16 @@ const adminReadLimiter = rateLimit({
 // Per-admin and per-IP caps on write attempts: also caps password guessing
 // with a stolen token.
 const writeLimiterByIp = rateLimit({
-  windowMs: 15 * 60 * 1000,
+  windowMs: 60 * 1000,
   max: 10,
   keyFn: (req) => "wallet-write-ip:" + clientIp(req),
-  message: "Too many wallet update attempts. Try again in 15 minutes.",
+  message: "Too many wallet update attempts. Try again in a minute.",
 });
 const writeLimiterByAdmin = rateLimit({
-  windowMs: 15 * 60 * 1000,
+  windowMs: 60 * 1000,
   max: 5,
   keyFn: (req) => "wallet-write-admin:" + req.admin.userId,
-  message: "Too many wallet update attempts. Try again in 15 minutes.",
+  message: "Too many wallet update attempts. Try again in a minute.",
 });
 
 // Public: the Fund Account page lists only enabled, admin-saved wallets.
