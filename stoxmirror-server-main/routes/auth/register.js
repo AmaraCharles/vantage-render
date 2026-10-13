@@ -48,6 +48,25 @@ router.post("/register", async (req, res) => {
   // Computed here rather than trusted from the client's surveyCompleted flag
   const surveyCompleted = SURVEY_FIELDS.every((field) => survey[field]);
 
+  // Every registration field is required except referralCode
+  const required = {
+    firstName: cleanString(firstName),
+    lastName: cleanString(lastName),
+    email: cleanString(email),
+    password: typeof password === "string" ? password : "",
+    country: cleanString(country),
+    phone: cleanString(phone),
+    currency,
+    ...survey,
+  };
+  const missing = Object.keys(required).filter((field) => !required[field]);
+  if (missing.length) {
+    return res.status(400).json({
+      success: false,
+      message: `Missing required fields: ${missing.join(", ")}`,
+    });
+  }
+
   // Generate OTP
   const otp = speakeasy.totp({
     secret: process.env.SECRET_KEY,

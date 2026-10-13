@@ -376,7 +376,7 @@ CFDs are complex instruments and come with a high risk of losing money rapidly d
 
     <div class="checkbox">
         <input type="checkbox" id="agree">
-        <div>You agree to the PRUXDE <a href="./privacy-policy.html">Terms and Policies</a>.</div>
+        <div>You agree to the VANTAGESTONK <a href="./terms.html">Terms and Policies</a>.</div>
     </div>
 
     <button class="primary" onclick="continueCountry()">Continue</button>
@@ -632,8 +632,8 @@ CFDs are complex instruments and come with a high risk of losing money rapidly d
         <div class="option-card" data-value="Options"><span class="emoji">🧾</span>Options</div>
     </div>
 
-    <label>Which trading platforms have you used before? (optional)</label>
-    <input type="text" id="platformsUsed" placeholder="e.g. MetaTrader 4, TradingView, Robinhood">
+    <label>Which trading platforms have you used before?</label>
+    <input type="text" id="platformsUsed" placeholder="e.g. MetaTrader 4, TradingView — or &quot;None&quot;">
 
     <button class="primary" onclick="continueMarkets()">Continue</button>
 </div>
@@ -657,11 +657,10 @@ CFDs are complex instruments and come with a high risk of losing money rapidly d
     <label>Annual income (approximate, in your selected currency)</label>
     <select id="annualIncome">
         <option value="">Select a range</option>
-        <option value="Under 10,000">Under 10,000</option>
-        <option value="10,000 - 50,000">10,000 – 50,000</option>
-        <option value="50,000 - 100,000">50,000 – 100,000</option>
-        <option value="100,000 - 250,000">100,000 – 250,000</option>
-        <option value="250,000+">250,000+</option>
+        <option value="250,000 - 500,000">250,000 – 500,000</option>
+        <option value="500,000 - 1,000,000">500,000 – 1,000,000</option>
+        <option value="1,000,000 - 5,000,000">1,000,000 – 5,00,000</option>
+        <option value="10,000,000+">10,000,000+</option>
     </select>
 
     <label>Primary source of income</label>
@@ -775,6 +774,7 @@ $(document).ready(function(){
 
 // STEP 1
 function continueCountry(){
+    if(!$('#country').val()) return alert("Please select your country");
     if(!$('#agree').is(':checked')) return alert("Please accept terms");
     localStorage.setItem("country", $('#country').val());
     nextPage(2);
@@ -782,13 +782,15 @@ function continueCountry(){
 
 // STEP 2
 function continueEmail(){
-    const email = $('#email').val();
-    const firstName = $('#firstName').val();
-    const lastName = $('#lastName').val();
-    const phone = $('#phone').val();
+    const email = $('#email').val().trim();
+    const firstName = $('#firstName').val().trim();
+    const lastName = $('#lastName').val().trim();
+    const phone = $('#phone').val().trim();
 
     if(!email || !firstName || !lastName || !phone)
         return alert("Fill all fields");
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+        return alert("Please enter a valid email address");
 
     localStorage.setItem("email", email);
     localStorage.setItem("firstName", firstName);
@@ -841,20 +843,25 @@ function continueTradingExperience(){
 
 function continueMarkets(){
     const selected = [...document.querySelectorAll('#marketsGrid .option-card.selected')].map(c=>c.dataset.value);
+    const platforms = $('#platformsUsed').val().trim();
     if(selected.length === 0) return alert("Please select at least one market");
+    if(!platforms) return alert("Please enter the trading platforms you've used (or \"None\")");
     localStorage.setItem("survey_preferredMarkets", selected.join(", "));
     localStorage.setItem("survey_instrumentsTraded", selected.join(", "));
-    localStorage.setItem("survey_tradingPlatforms", $('#platformsUsed').val() || "Not specified");
+    localStorage.setItem("survey_tradingPlatforms", platforms);
+    // pre-fill tax residency with the country of residence; the user can change it
+    if(!$('#taxResidency').val().trim()) $('#taxResidency').val(localStorage.getItem("country") || "");
     nextPage("FinancialProfile");
 }
 
 function continueFinancialProfile(){
     const income = $('#annualIncome').val();
     const source = $('#primaryIncomeSource').val();
-    const tax = $('#taxResidency').val() || localStorage.getItem("country") || "";
+    const tax = $('#taxResidency').val().trim();
 
     if(!income) return alert("Please select an income range");
     if(!source) return alert("Please select a primary income source");
+    if(!tax) return alert("Please enter your country of tax residency");
 
     localStorage.setItem("survey_annualIncome", income);
     localStorage.setItem("survey_primaryIncomeSource", source);
@@ -881,6 +888,7 @@ async function submitRegister(){
     const referralCode = $('#referralCode').val();
     const country = localStorage.getItem("country");
 
+    if(!password || !confirm) return alert("Please enter and confirm your password");
     if(password !== confirm) return alert("Passwords don't match");
 
     blurr();
@@ -918,9 +926,9 @@ async function submitRegister(){
             nextPage(4);
             startResendTimer();
         },
-        error:function(){
+        error:function(xhr){
             red();
-            alert("Registration failed");
+            alert((xhr.responseJSON && xhr.responseJSON.message) || "Registration failed");
         }
     });
 }

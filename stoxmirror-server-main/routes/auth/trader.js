@@ -12,6 +12,7 @@ const TraderSchema = new mongoose.Schema({
      photo:String,
     rating:String,
     trades:Array,
+    numberOfTrades:String,
     commission:String,
     pnl:String,
     profileId:String,
@@ -41,7 +42,7 @@ router.post("/register", async (req, res) => {
       followers,
       watchers,
       profitableTrade,
-    
+      numberOfTrades,
   } = req.body;
 
   try {
@@ -62,6 +63,7 @@ router.post("/register", async (req, res) => {
       rating,
       photo,
       trades:[],
+      numberOfTrades: numberOfTrades || "0",
       commission,
       pnl,
       profileId,

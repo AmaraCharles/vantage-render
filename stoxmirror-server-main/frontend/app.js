@@ -519,7 +519,25 @@ navLinks.forEach(link => {
   });
 });
 
+// Pages that can be restored from the URL after a refresh
+const RESTORABLE_PAGES = [
+  'market', 'social-trading', 'live-stream', 'trade', 'fund-account', 'profile',
+  'investment', 'withdrawal', 'referrals', 'rewards', 'dashboard',
+  'investment-plans', 'tradehistory', 'copytradehistory', 'profit-history'
+];
+
 function loadPage(page) {
+  // remember the page in the URL (e.g. #withdrawal) so a refresh comes back here,
+  // and keep the sidebar highlight in sync when a page is opened from a button
+  if (RESTORABLE_PAGES.includes(page)) {
+    history.replaceState(null, '', '#' + page);
+    const navLink = document.querySelector(`.nav-link[data-page="${page}"]`);
+    if (navLink) {
+      document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+      navLink.classList.add('active');
+    }
+  }
+
   switch (page) {
     case 'market':
       renderMarketPage();
@@ -1993,11 +2011,11 @@ document.getElementById("loadCopyHistoryBtn").addEventListener("click", () => {
           <div class="trader-stats">
             <div>
               <div class="stat-label">Number of trades</div>
-              <div class="stat-value">${trader.trades || 0}</div>
+              <div class="stat-value">${trader.numberOfTrades || 0}</div>
             </div>
             <div>
               <div class="stat-label">Commission</div>
-              <div class="stat-value">${trader.commission || 0}%</div>
+              <div class="stat-value">${String(trader.commission || 0).replace(/%$/, '')}%</div>
             </div>
           </div>
 
@@ -2013,6 +2031,7 @@ document.getElementById("loadCopyHistoryBtn").addEventListener("click", () => {
   data-rating="${trader.rating || '0'}"
   data-photo="${trader.photo || ' '}"
   data-trades='${JSON.stringify(trader.trades || [])}'
+  data-numberoftrades="${trader.numberOfTrades || '0'}"
   data-commission="${trader.commission || '0%'}"
   data-pnl="${trader.pnl || '₦0'}"
   data-profileid="${trader.profileId || 'N/A'}"
@@ -3409,6 +3428,24 @@ async function handleEditProfile() {
 
 // ==================== MODALS ====================
 
+// Close any .modal via its × button, a click on the dark backdrop, or Escape
+document.addEventListener('click', (e) => {
+  const closeBtn = e.target.closest('.modal .modal-close');
+  if (closeBtn) {
+    closeBtn.closest('.modal').classList.remove('active');
+    return;
+  }
+  if (e.target.classList && e.target.classList.contains('modal')) {
+    e.target.classList.remove('active');
+  }
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.modal.active').forEach(m => m.classList.remove('active'));
+  }
+});
+
 function openTradeModal(symbol, type, price) {
   const modal = document.getElementById('tradeModal');
   document.getElementById('tradeModalTitle').textContent = `${type} ${symbol}`;
@@ -3447,6 +3484,7 @@ function openCopyTradeModal(btn) {
     level: btn.dataset.level,
     rating: btn.dataset.rating,
     trades: JSON.parse(btn.dataset.trades || "[]"),
+    numberOfTrades: btn.dataset.numberoftrades,
     commission: btn.dataset.commission,
     pnl: btn.dataset.pnl,
      photo: btn.dataset.photo,
@@ -3501,7 +3539,11 @@ function openCopyTradeModal(btn) {
           <div class="stat-label">Watchers</div>
           <div class="stat-value">${trader.watchers}</div>
         </div>
-        <div style="grid-column: 1 / -1;">
+        <div>
+          <div class="stat-label">Number of Trades</div>
+          <div class="stat-value">${trader.numberOfTrades}</div>
+        </div>
+        <div>
           <div class="stat-label">Profitable Trade %</div>
           <div class="stat-value">${trader.profitableTrade}</div>
         </div>
@@ -3717,7 +3759,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!initUserData()) return;
   initTheme();
   updateSidebarUserInfo();
-  loadPage('market');
+  const savedPage = decodeURIComponent(location.hash.slice(1));
+  loadPage(RESTORABLE_PAGES.includes(savedPage) ? savedPage : 'market');
 });
 
 // Update sidebar with user info
